@@ -1,0 +1,125 @@
+# Deploy Conta Azul Yoga Subgraph via Kamal + Traefik path prefix on dev.avocado.tech.
+# App secrets: Infisical avcd-conta-azul-yoga-subgraph (/conta-azul-yoga-subgraph).
+
+name: Deploy Conta Azul Yoga Subgraph to DigitalOcean (dev)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "config/**"
+      - ".kamal/**"
+      - "scripts/ci/**"
+      - "Dockerfile"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - ".github/**"
+  workflow_dispatch:
+    inputs:
+      kamal_command:
+        description: Kamal command (deploy or setup for first run)
+        required: false
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - setup
+          - redeploy
+
+concurrency:
+  group: deploy-conta-azul-yoga-subgraph-do-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: development
+    env:
+      INFISICAL_API_URL: ${{ vars.INFISICAL_API_URL || 'https://secrets.avcd.ai/api' }}
+      DEPLOY_USER: ${{ vars.DO_DEPLOY_USER || secrets.DO_DEPLOY_USER || 'deploy' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Run unit tests
+        run: |
+          npm ci
+          npm run test:unit
+
+      - name: Verify GitHub Environment configuration
+        env:
+          DO_DEPLOY_SSH_KEY: ${{ secrets.DO_DEPLOY_SSH_KEY }}
+          INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+          INFISICAL_OIDC_IDENTITY_ID: ${{ vars.INFISICAL_OIDC_IDENTITY_ID }}
+          DO_DEPLOY_HOST: ${{ vars.DO_DEPLOY_HOST }}
+          DO_PUBLIC_HOST: ${{ vars.DO_PUBLIC_HOST || vars.PUBLIC_HOST }}
+        run: |
+          set -euo pipefail
+          for key in DO_DEPLOY_SSH_KEY INFISICAL_PROJECT_ID INFISICAL_OIDC_IDENTITY_ID DO_DEPLOY_HOST DO_PUBLIC_HOST; do
+            val="${!key:-}"
+            [ -n "$val" ] || { echo "::error::Missing $key on development environment"; exit 1; }
+            echo "✓ $key is set"
+          done
+
+      - name: Resolve deploy targets
+        id: deploy
+        env:
+          DO_DEPLOY_HOST: ${{ vars.DO_DEPLOY_HOST }}
+          DO_PUBLIC_HOST: ${{ vars.DO_PUBLIC_HOST || vars.PUBLIC_HOST }}
+        run: |
+          set -euo pipefail
+          [ -n "${DO_DEPLOY_HOST}" ] || { echo "::error::DO_DEPLOY_HOST is empty"; exit 1; }
+          [ -n "${DO_PUBLIC_HOST}" ] || { echo "::error::DO_PUBLIC_HOST is empty"; exit 1; }
+          echo "ssh_host=${DO_DEPLOY_HOST}" >> "$GITHUB_OUTPUT"
+          echo "public_host=${DO_PUBLIC_HOST}" >> "$GITHUB_OUTPUT"
+          echo "registry_url=ghcr.io" >> "$GITHUB_OUTPUT"
+          echo "health_url=https://${DO_PUBLIC_HOST}/conta-azul-yoga-subgraph/health" >> "$GITHUB_OUTPUT"
+
+      - name: Preprocess Kamal config
+        env:
+          DO_DEPLOY_HOST: ${{ steps.deploy.outputs.ssh_host }}
+          DO_DEPLOY_USER: ${{ env.DEPLOY_USER }}
+          DO_PUBLIC_HOST: ${{ steps.deploy.outputs.public_host }}
+          GHCR_REGISTRY_URL: ${{ steps.deploy.outputs.registry_url }}
+        run: |
+          chmod +x scripts/ci/preprocess-deploy.sh
+          ./scripts/ci/preprocess-deploy.sh
+
+      - name: Deploy Conta Azul Yoga Subgraph with Kamal
+        uses: Avocado-Technology/avcd-actions/kamal-deploy@v5.6
+        with:
+          deploy_host: ${{ steps.deploy.outputs.ssh_host }}
+          deploy_user: ${{ env.DEPLOY_USER }}
+          ssh_key: ${{ secrets.DO_DEPLOY_SSH_KEY }}
+          docr_registry_url: ${{ steps.deploy.outputs.registry_url }}
+          infisical_api_url: ${{ env.INFISICAL_API_URL }}
+          infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
+          infisical_infra_project_id: ${{ vars.INFISICAL_INFRA_PROJECT_ID || 'db036f0e-7452-4e17-9573-e5471b45d65f' }}
+          infisical_oidc_identity_id: ${{ vars.INFISICAL_OIDC_IDENTITY_ID }}
+          infisical_oidc_audience: ${{ vars.INFISICAL_OIDC_AUDIENCE || 'https://secrets.avcd.ai' }}
+          infisical_secrets_path: /conta-azul-yoga-subgraph
+          infisical_env: dev
+          kamal_version: ${{ vars.KAMAL_VERSION || '2.11.0' }}
+          kamal_command: ${{ github.event_name == 'workflow_dispatch' && inputs.kamal_command || 'deploy' }}
+          kamal_destination: development
+          skip_accessory_boot: "true"
+          docr_username: ${{ github.actor }}
+          docr_password: ${{ secrets.GITHUB_TOKEN }}
+          public_host: ${{ steps.deploy.outputs.public_host }}
+          verify_url: ${{ steps.deploy.outputs.health_url }}
+          verify_body_substring: '"status":"ok"'
+          verify_retry_max_time: "600"
