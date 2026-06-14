@@ -51,6 +51,11 @@ export class TokenResolver {
     await this.redis.set(redisKey(storeId), `plain:${JSON.stringify(token)}`)
   }
 
+  async deleteToken(storeId: string): Promise<boolean> {
+    const deleted = await this.redis.del(redisKey(storeId))
+    return deleted > 0
+  }
+
   async refreshToken(current: ContaAzulToken): Promise<ContaAzulToken> {
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -96,6 +101,10 @@ export class TokenResolver {
     if (result !== 'PONG') {
       throw new Error('Redis ping failed')
     }
+  }
+
+  async disconnect(): Promise<void> {
+    await this.redis.quit()
   }
 
   async isStoreRegistered(storeId: string): Promise<boolean> {

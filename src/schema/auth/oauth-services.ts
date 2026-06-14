@@ -19,3 +19,7 @@ export const authTokenResolver = new TokenResolver(
   authConfig.getClientSecret(),
   authConfig.getTokenUrl()
 )
+
+export async function disconnectAuthRedis(): Promise<void> {
+  await sharedRedis.quit()
+}

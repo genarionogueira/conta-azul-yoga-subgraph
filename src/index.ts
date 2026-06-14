@@ -6,8 +6,18 @@ import { initMongo, getDb, closeMongo } from './lib/mongo/connection.js'
 import { ensureCategoriesIndexes } from './lib/mongo/indexes.js'
 import { syncToMongo } from './lib/sync/service.js'
 import { schemaPromise } from './schema/index.js'
+import { handleConnectRequest } from './http/connect-routes.js'
+import { authConfig, authTokenResolver, oauthStateStore } from './schema/auth/oauth-services.js'
 
 const PORT = Number(process.env.PORT ?? 4000)
+
+const connectRoutesDeps = {
+  connectFlow: {
+    authConfig,
+    oauthStateStore,
+    tokenResolver: authTokenResolver,
+  },
+}
 
 async function startupSyncCategories(): Promise<void> {
   try {
@@ -46,16 +56,38 @@ async function main(): Promise<void> {
   })
 
   const server = createServer((req, res) => {
-    if (req.url === '/health' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ status: 'ok' }))
-      return
-    }
-    yoga(req, res)
+    void (async () => {
+      if (req.url === '/health' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ status: 'ok' }))
+        return
+      }
+
+      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+      const handled = await handleConnectRequest(
+        req,
+        res,
+        url.pathname,
+        url.searchParams,
+        connectRoutesDeps
+      )
+      if (handled) {
+        return
+      }
+
+      yoga(req, res)
+    })().catch((err) => {
+      console.error('Request handler error:', err)
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' })
+        res.end('Internal Server Error')
+      }
+    })
   })
 
   server.listen(PORT, () => {
     console.log(`Yoga subgraph running on http://localhost:${PORT}/graphql`)
+    console.log(`Conta Azul connect UI: http://localhost:${PORT}/connect`)
     void startupSyncCategories()
   })
 

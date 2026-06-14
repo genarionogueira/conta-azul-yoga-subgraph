@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/oauth2/authorize"
+  },
+  "response": {
+    "status": 302,
+    "headers": {
+      "Location": "http://yoga-subgraph:4000/callback?code=e2e-auth-code&state={{request.query.state}}"
+    },
+    "transformers": ["response-template"]
+  }
+}

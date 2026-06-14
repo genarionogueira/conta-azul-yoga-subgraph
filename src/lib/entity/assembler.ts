@@ -145,17 +145,23 @@ export async function buildEntitySchema(
 
   const { authorizationUrl } = await import('../../schema/auth/resolvers/Query/authorizationUrl.js')
   const { contaAzulAuthConfig } = await import('../../schema/auth/resolvers/Query/contaAzulAuthConfig.js')
+  const { connectionStatus } = await import('../../schema/auth/resolvers/Query/connectionStatus.js')
+  const { connectedStores } = await import('../../schema/auth/resolvers/Query/connectedStores.js')
   const { hello } = await import('../../schema/hello/resolvers/Query/hello.js')
   const { setupConnection } = await import('../../schema/auth/resolvers/Mutation/setupConnection.js')
+  const { disconnectStore } = await import('../../schema/auth/resolvers/Mutation/disconnectStore.js')
 
   const manualResolvers: GraphQLResolverMap<unknown> = {
     Query: {
       authorizationUrl,
       contaAzulAuthConfig,
+      connectionStatus,
+      connectedStores,
       hello,
     },
     Mutation: {
       setupConnection,
+      disconnectStore,
     },
   }
 

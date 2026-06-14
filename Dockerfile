@@ -17,6 +17,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/schema ./src/schema
 COPY --from=builder /app/src/lib/entity/directives.graphql ./src/lib/entity/directives.graphql
+COPY --from=builder /app/src/templates ./dist/templates
 EXPOSE 4000
 HEALTHCHECK CMD wget -qO- http://localhost:4000/health || exit 1
 CMD ["node", "dist/index.js"]

@@ -1,5 +1,8 @@
 import type { Document } from 'mongodb'
-import { getTokenResolver } from '../../context.js'
+import type { AppContext } from '../../context.js'
+import { getTokenResolver, listConnectedStoreIds } from '../../context.js'
+import { ensureFreshCache, logCache, metaKey, parseTtl, writeMeta } from '../cache/index.js'
+import { extractStoreIdsFromWhere } from '../diagnostics/extract-store-ids.js'
 import { diagnoseEntityQuery } from '../diagnostics/generic-query.js'
 import { getDb } from '../mongo/connection.js'
 import { MongoRepository } from '../mongo/repository.js'
@@ -15,11 +18,38 @@ import {
 } from './naming.js'
 import type { EntityDef } from './types.js'
 
+async function maybeEnsureFreshCache(
+  entity: EntityDef,
+  where: ConnectionArgs['where'] | null | undefined,
+  context?: AppContext
+): Promise<void> {
+  if (!entity.cache) return
+
+  const fromWhere = extractStoreIdsFromWhere(where ?? null)
+  const resolved =
+    fromWhere.length > 0
+      ? fromWhere
+      : context?.storeId
+        ? [context.storeId]
+        : await listConnectedStoreIds()
+
+  logCache('resolver_ensure_fresh', {
+    entity: entity.name,
+    storeCount: resolved.length,
+    storeIds: resolved.join(','),
+  })
+
+  await ensureFreshCache(entity, { storeIds: resolved, db: getDb() })
+}
+
 export function makeConnectionResolver(entity: EntityDef) {
   return async (
     _parent: unknown,
-    args: ConnectionArgs & { order_by?: Parameters<typeof buildMongoSort>[0] }
+    args: ConnectionArgs & { order_by?: Parameters<typeof buildMongoSort>[0] },
+    context?: AppContext
   ) => {
+    await maybeEnsureFreshCache(entity, args.where ?? null, context)
+
     const repo = new MongoRepository<Document>(getDb().collection(entity.mongo.collection))
     const sort = buildMongoSort(args.order_by ?? null) ?? { id: 1 }
     const { order_by: _orderBy, ...connectionArgs } = args
@@ -42,8 +72,11 @@ export function makeConnectionResolver(entity: EntityDef) {
 export function makeAggregateResolver(entity: EntityDef) {
   return async (
     _parent: unknown,
-    args: { where?: ConnectionArgs['where']; distinct_on?: ConnectionArgs['distinct_on'] }
+    args: { where?: ConnectionArgs['where']; distinct_on?: ConnectionArgs['distinct_on'] },
+    context?: AppContext
   ) => {
+    await maybeEnsureFreshCache(entity, args.where ?? null, context)
+
     const repo = new MongoRepository<Document>(getDb().collection(entity.mongo.collection))
     const count = await repo.count(args.where, args.distinct_on)
     const nodes = await repo.findMany({
@@ -101,6 +134,10 @@ export function makeSyncResolver(entity: EntityDef) {
       totalSynced += result.syncedCount
       if (result.status === 'success') {
         successCount += 1
+        if (entity.cache) {
+          const key = metaKey(entity.mongo.collection, sid)
+          await writeMeta(key, parseTtl(entity.cache.ttl), db)
+        }
       } else {
         errorCount += 1
         if (result.errorMessage) errors.push(result.errorMessage)

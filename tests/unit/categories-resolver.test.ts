@@ -17,8 +17,14 @@ const categoryEntity: EntityDef = {
   key: { fields: 'id storeId' },
 }
 
+const categoryEntityWithCache: EntityDef = {
+  ...categoryEntity,
+  cache: { ttl: '24h' },
+}
+
 const buildConnection = vi.fn()
 const diagnoseEntityQuery = vi.fn()
+const ensureFreshCache = vi.fn()
 
 vi.mock('../../src/lib/mongo/connection.js', () => ({
   getDb: vi.fn(() => ({
@@ -38,15 +44,26 @@ vi.mock('../../src/lib/diagnostics/generic-query.js', () => ({
   diagnoseEntityQuery: (...args: unknown[]) => diagnoseEntityQuery(...args),
 }))
 
+vi.mock('../../src/lib/cache/index.js', () => ({
+  ensureFreshCache: (...args: unknown[]) => ensureFreshCache(...args),
+  logCache: vi.fn(),
+  metaKey: vi.fn(),
+  parseTtl: vi.fn(),
+  writeMeta: vi.fn(),
+}))
+
 vi.mock('../../src/context.js', () => ({
   getTokenResolver: vi.fn(() => ({})),
+  listConnectedStoreIds: vi.fn().mockResolvedValue(['store-1']),
 }))
 
 describe('contaAzulCategories resolver (entity factory)', () => {
   const contaAzulCategories = makeConnectionResolver(categoryEntity)
+  const contaAzulCategoriesCached = makeConnectionResolver(categoryEntityWithCache)
 
   beforeEach(() => {
     vi.clearAllMocks()
+    ensureFreshCache.mockResolvedValue(undefined)
   })
 
   it('GivenMongoReturnsData_WhenQueryingCategories_ThenReturnsConnectionWithStoreId', async () => {
@@ -121,5 +138,52 @@ describe('contaAzulCategories resolver (entity factory)', () => {
     buildConnection.mockRejectedValue(new Error('MongoDB query failed'))
 
     await expect(contaAzulCategories({}, {})).rejects.toThrow('MongoDB query failed')
+  })
+
+  it('GivenCacheDirective_WhenQueryingCategories_ThenCallsEnsureFreshCacheFirst', async () => {
+    buildConnection.mockResolvedValue({
+      edges: [],
+      nodes: [],
+      pageInfo: {
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: null,
+        endCursor: null,
+      },
+      totalCount: 0,
+      diagnostics: [],
+    })
+    diagnoseEntityQuery.mockResolvedValue([])
+
+    await contaAzulCategoriesCached(
+      {},
+      { where: { storeId: { _eq: 'store-1' } } },
+      { storeId: 'store-1', contaAzulClient: undefined }
+    )
+
+    expect(ensureFreshCache).toHaveBeenCalled()
+    expect(buildConnection).toHaveBeenCalled()
+    expect(ensureFreshCache.mock.invocationCallOrder[0]).toBeLessThan(
+      buildConnection.mock.invocationCallOrder[0]!
+    )
+  })
+
+  it('GivenNoCacheDirective_WhenQueryingCategories_ThenSkipsEnsureFreshCache', async () => {
+    buildConnection.mockResolvedValue({
+      edges: [],
+      nodes: [],
+      pageInfo: {
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: null,
+        endCursor: null,
+      },
+      totalCount: 1,
+      diagnostics: [],
+    })
+
+    await contaAzulCategories({}, { where: { storeId: { _eq: 'store-1' } } })
+
+    expect(ensureFreshCache).not.toHaveBeenCalled()
   })
 })
