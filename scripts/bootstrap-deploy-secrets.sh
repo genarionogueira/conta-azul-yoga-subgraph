@@ -91,36 +91,25 @@ def redis_url_from_admin_uri(export_text: str, db_index: str) -> str:
     return urlunparse(parsed._replace(path=f"/{db_index}"))
 
 
-# Dev droplet containers reach managed Mongo only on the VPC private hostname.
-DEV_MONGO_PUBLIC_HOST = "avcd-dev-mongo-1b007f0-e60b28c6.mongo.ondigitalocean.com"
-DEV_MONGO_PRIVATE_HOST = (
-    "private-avcd-dev-mongo-1b007f0-7bafc248.mongo.ondigitalocean.com"
-)
-
-
-def mongo_host_for_deploy(hostname):
-    if not hostname:
-        raise SystemExit("❌ Mongo hostname missing from connection URL")
-    override = os.environ.get("MONGODB_PRIVATE_HOST", "").strip()
-    if override:
-        return override
-    if hostname == DEV_MONGO_PUBLIC_HOST:
-        return DEV_MONGO_PRIVATE_HOST
-    return hostname
+DEV_MONGO_SRV_SEED_HOST = "avcd-dev-mongo-1b007f0-e60b28c6.mongo.ondigitalocean.com"
 
 
 def mongodb_url_for_deploy(mongo_uri: str, database: str) -> str:
     split = urlsplit(mongo_uri)
     if not split.scheme or not split.netloc:
         raise SystemExit("❌ Mongo connection URL is invalid")
-    host = mongo_host_for_deploy(split.hostname)
+    if split.scheme == "mongodb+srv":
+        return urlunsplit((split.scheme, split.netloc, f"/{database}", split.query, split.fragment))
+    if split.scheme != "mongodb":
+        raise SystemExit(f"❌ Unsupported Mongo URL scheme: {split.scheme}")
+
     userinfo = split.username or ""
     if split.password:
         userinfo = f"{split.username}:{split.password}"
+    host = DEV_MONGO_SRV_SEED_HOST
     netloc = f"{userinfo}@{host}" if userinfo else host
-    if split.port:
-        netloc = f"{netloc}:{split.port}"
-    return urlunsplit((split.scheme, netloc, f"/{database}", split.query, split.fragment))
+    query = split.query or "authSource=admin&tls=true"
+    return urlunsplit(("mongodb+srv", netloc, f"/{database}", query, split.fragment))
 
 
 def mongodb_url_from_ai_export(export_text: str, database: str = "conta_azul_yoga") -> str:
@@ -141,8 +130,8 @@ mongodb_url = local.get("MONGODB_URL", "")
 if not valid_deploy_secret(mongodb_url):
     mongodb_url = mongodb_url_from_ai_export(ai_export)
 else:
-    parsed_mongo = urlsplit(mongodb_url)
-    db_name = parsed_mongo.path.strip("/") or "conta_azul_yoga"
+    split_mongo = urlsplit(mongodb_url)
+    db_name = split_mongo.path.strip("/") or "conta_azul_yoga"
     mongodb_url = mongodb_url_for_deploy(mongodb_url, db_name)
 
 jwt_secret = local.get("JWT_SECRET", "")
