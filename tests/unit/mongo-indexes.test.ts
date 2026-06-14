@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { MongoServerError } from 'mongodb'
 import { ensureCategoriesIndexes } from '../../src/lib/mongo/indexes.js'
 import type { Db } from 'mongodb'
 
@@ -21,5 +22,19 @@ describe('ensureCategoriesIndexes', () => {
       (call) => JSON.stringify(call[0]) === JSON.stringify({ expiresAt: 1 })
     )
     expect(expiresAtCall).toBeDefined()
+  })
+
+  it('GivenIndexOptionsConflict_WhenEnsuringIndexes_ThenContinuesWithoutThrowing', async () => {
+    const conflict = new MongoServerError('IndexOptionsConflict')
+    conflict.code = 85
+    const createIndex = vi
+      .fn()
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValue('ok')
+    const db = {
+      collection: vi.fn().mockReturnValue({ createIndex }),
+    } as unknown as Db
+
+    await expect(ensureCategoriesIndexes(db)).resolves.toBeUndefined()
   })
 })
