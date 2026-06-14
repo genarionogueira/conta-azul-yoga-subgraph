@@ -15,6 +15,7 @@ export class AuthConfigError extends Error {
 function isAllowedHttpRedirect(hostname: string): boolean {
   if (hostname === 'localhost' || hostname === '127.0.0.1') return true
   if (hostname.includes('mock-conta-azul')) return true
+  if (hostname === 'yoga-subgraph') return true
   if (hostname.endsWith('.local')) return true
   return false
 }

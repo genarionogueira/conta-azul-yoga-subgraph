@@ -1,23 +1,15 @@
-import { AuthConfigError } from '../../../../lib/auth-config.js'
-import { buildAuthorizationUrl } from '../../../../lib/conta-azul-oauth.js'
-import { authConfig, oauthStateStore } from '../../oauth-services.js'
+import { completeConnect, startConnect } from '../../../../lib/auth/connect-flow.js'
+import { authConfig, authTokenResolver, oauthStateStore } from '../../oauth-services.js'
+
+const connectDeps = {
+  authConfig,
+  oauthStateStore,
+  tokenResolver: authTokenResolver,
+}
 
 export async function authorizationUrl(
   _parent: unknown,
   args: { storeId: string }
 ) {
-  const redirectUri = authConfig.requireRedirectUri()
-  const clientId = authConfig.getClientId()
-  if (!clientId) {
-    throw new AuthConfigError('CONTA_AZUL_CLIENT_ID is not configured')
-  }
-  const state = await oauthStateStore.createState(args.storeId)
-  const url = buildAuthorizationUrl({
-    clientId,
-    redirectUri,
-    state,
-    scope: authConfig.getScope(),
-    authUrl: authConfig.getAuthUrl(),
-  })
-  return { storeId: args.storeId, url, state }
+  return startConnect(args.storeId, connectDeps)
 }

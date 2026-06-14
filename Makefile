@@ -21,6 +21,7 @@ help:
 	@echo "Conta Azul Yoga Subgraph — Local Development Commands:"
 	@echo ""
 	@echo "  make dev             Start the subgraph (Docker Compose)"
+	@echo "                       Connect UI: http://localhost:4000/connect"
 	@echo "  make down            Stop the subgraph (Redis tokens kept in volume)"
 	@echo "  make logs            Tail container logs"
 	@echo "  make test            Run unit tests"

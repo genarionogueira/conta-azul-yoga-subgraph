@@ -61,7 +61,7 @@ env:
     CONTA_AZUL_TOKEN_URL: https://auth.contaazul.com/oauth2/token
     CONTA_AZUL_AUTH_URL: https://auth.contaazul.com/login
     CONTA_AZUL_OAUTH_SCOPE: openid profile aws.cognito.signin.user.admin
-    CONTA_AZUL_REDIRECT_URI: https://dev.avocado.tech/conta-azul-service/callback
+    CONTA_AZUL_REDIRECT_URI: https://dev.avocado.tech/conta-azul-yoga-subgraph/callback
     SALES_SYNC_DAYS: "90"
     JWT_ISSUER: avcd
     JWT_AUDIENCE: conta-azul-service

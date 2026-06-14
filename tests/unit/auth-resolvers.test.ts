@@ -7,6 +7,9 @@ const mockRedis = {
 }
 
 const mockSaveToken = vi.fn()
+const mockGetToken = vi.fn()
+const mockDeleteToken = vi.fn()
+const mockListConnectedStoreIds = vi.fn()
 
 vi.mock('ioredis', () => ({
   Redis: vi.fn(() => mockRedis),
@@ -15,6 +18,9 @@ vi.mock('ioredis', () => ({
 vi.mock('../../src/lib/token-resolver.js', () => ({
   TokenResolver: vi.fn(() => ({
     saveToken: mockSaveToken,
+    getToken: mockGetToken,
+    deleteToken: mockDeleteToken,
+    listConnectedStoreIds: mockListConnectedStoreIds,
   })),
 }))
 
@@ -24,8 +30,17 @@ const { contaAzulAuthConfig } = await import(
 const { authorizationUrl } = await import(
   '../../src/schema/auth/resolvers/Query/authorizationUrl.js'
 )
+const { connectionStatus } = await import(
+  '../../src/schema/auth/resolvers/Query/connectionStatus.js'
+)
+const { connectedStores } = await import(
+  '../../src/schema/auth/resolvers/Query/connectedStores.js'
+)
 const { setupConnection } = await import(
   '../../src/schema/auth/resolvers/Mutation/setupConnection.js'
+)
+const { disconnectStore } = await import(
+  '../../src/schema/auth/resolvers/Mutation/disconnectStore.js'
 )
 
 describe('auth resolvers', () => {
@@ -44,6 +59,9 @@ describe('auth resolvers', () => {
     mockRedis.get.mockReset()
     mockRedis.del.mockReset()
     mockSaveToken.mockReset()
+    mockGetToken.mockReset()
+    mockDeleteToken.mockReset()
+    mockListConnectedStoreIds.mockReset()
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -181,5 +199,58 @@ describe('auth resolvers', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('Authorization code exchange failed')
+  })
+
+  it('GivenTokenInRedis_WhenConnectionStatus_ThenIsConnectedTrue', async () => {
+    mockGetToken.mockResolvedValue({
+      access_token: 'access',
+      refresh_token: 'refresh',
+      expires_at: Date.now() + 3_600_000,
+    })
+
+    const result = await connectionStatus({}, { storeId: 'store-1' }, {} as never, {} as never)
+
+    expect(result).toEqual({
+      storeId: 'store-1',
+      isConnected: true,
+      error: null,
+    })
+  })
+
+  it('GivenNoToken_WhenConnectionStatus_ThenIsConnectedFalse', async () => {
+    mockGetToken.mockResolvedValue(null)
+
+    const result = await connectionStatus({}, { storeId: 'store-1' }, {} as never, {} as never)
+
+    expect(result.isConnected).toBe(false)
+  })
+
+  it('GivenConnectedStores_WhenQuery_ThenListsStoreIds', async () => {
+    mockListConnectedStoreIds.mockResolvedValue(['store-a', 'store-b'])
+
+    const result = await connectedStores({}, {}, {} as never, {} as never)
+
+    expect(result).toEqual([{ storeId: 'store-a' }, { storeId: 'store-b' }])
+  })
+
+  it('GivenExistingToken_WhenDisconnectStore_ThenSuccessTrue', async () => {
+    mockDeleteToken.mockResolvedValue(true)
+
+    const result = await disconnectStore({}, { storeId: 'store-1' }, {} as never, {} as never)
+
+    expect(result).toEqual({
+      success: true,
+      storeId: 'store-1',
+      error: null,
+    })
+  })
+
+  it('GivenNoToken_WhenDisconnectStore_ThenSuccessFalse', async () => {
+    mockDeleteToken.mockResolvedValue(false)
+
+    const result = await disconnectStore({}, { storeId: 'store-1' }, {} as never, {} as never)
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('not connected')
   })
 })

@@ -11,6 +11,7 @@ function createMockRedis() {
     get: vi.fn(),
     set: vi.fn(),
     scan: vi.fn(),
+    del: vi.fn(),
   }
 }
 
@@ -148,5 +149,22 @@ describe('TokenResolver', () => {
     const result = await resolver.listConnectedStoreIds()
 
     expect(result).toEqual(['store-a', 'store-b'])
+  })
+
+  it('GivenExistingToken_WhenDeleteToken_ThenKeyRemoved', async () => {
+    redis.del.mockResolvedValue(1)
+
+    const result = await resolver.deleteToken(storeId)
+
+    expect(result).toBe(true)
+    expect(redis.del).toHaveBeenCalledWith('conta_azul:token:store-1')
+  })
+
+  it('GivenMissingToken_WhenDeleteToken_ThenReturnsFalse', async () => {
+    redis.del.mockResolvedValue(0)
+
+    const result = await resolver.deleteToken(storeId)
+
+    expect(result).toBe(false)
   })
 })

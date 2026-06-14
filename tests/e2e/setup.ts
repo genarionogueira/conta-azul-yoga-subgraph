@@ -65,6 +65,14 @@ export async function setup(): Promise<void> {
   const redisUrl = `redis://localhost:${redisPort}`
   process.env.E2E_REDIS_URL = redisUrl
 
+  const mongoContainer = compose.getContainer('mongo-1')
+  const mongoPort = mongoContainer.getMappedPort(27017)
+  process.env.E2E_MONGO_URL = `mongodb://localhost:${mongoPort}/conta_azul`
+
+  const wiremockContainer = compose.getContainer('mock-conta-azul-1')
+  const wiremockPort = wiremockContainer.getMappedPort(8080)
+  process.env.E2E_WIREMOCK_ADMIN_URL = `http://localhost:${wiremockPort}`
+
   const redis = new Redis(redisUrl)
   const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
   await redis.set('conta_azul:token:store-1', tokenValue)

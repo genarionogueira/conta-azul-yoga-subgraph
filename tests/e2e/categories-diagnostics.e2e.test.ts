@@ -54,7 +54,7 @@ describe('E2E: contaAzulCategories diagnostics', () => {
     )
   })
 
-  it('GivenTokenWithoutSync_WhenQuerying_ThenReturnsDataNotSyncedDiagnostic', async () => {
+  it('GivenTokenWithoutPriorSync_WhenQuerying_ThenAutoRefreshesAndReturnsData', async () => {
     const redis = new Redis(getRedisUrl())
     const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
     await redis.set('conta_azul:token:unsynced-store', tokenValue)
@@ -69,16 +69,13 @@ describe('E2E: contaAzulCategories diagnostics', () => {
     const connection = (
       res.data as {
         contaAzulCategories: {
+          totalCount: number
           diagnostics: Array<{ code: string; storeId?: string | null; hint: string }>
         }
       }
     ).contaAzulCategories
-    expect(
-      connection.diagnostics.some(
-        (d) => d.code === 'DATA_NOT_SYNCED' && d.storeId === 'unsynced-store'
-      )
-    ).toBe(true)
-    expect(connection.diagnostics[0]?.hint).toContain('syncContaAzulCategories')
+    expect(connection.totalCount).toBeGreaterThan(0)
+    expect(connection.diagnostics).toEqual([])
   })
 
   it('GivenInvalidFirst_WhenQuerying_ThenReturnsBadUserInputError', async () => {

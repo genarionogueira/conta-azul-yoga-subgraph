@@ -21,6 +21,12 @@ describe('validateRedirectUri', () => {
     ).not.toThrow()
   })
 
+  it('GivenYogaSubgraphHttpUri_WhenValidating_ThenPasses', () => {
+    expect(() =>
+      validateRedirectUri('http://yoga-subgraph:4000/callback')
+    ).not.toThrow()
+  })
+
   it('GivenInvalidFormat_WhenValidating_ThenThrowsRedirectUriError', () => {
     expect(() => validateRedirectUri('not-a-url')).toThrow(RedirectUriError)
   })
