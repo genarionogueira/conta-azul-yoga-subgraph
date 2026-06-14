@@ -7,11 +7,6 @@ export default defineConfig({
   test: {
     environment: 'node',
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        isolate: false,
-      },
-    },
     server: {
       deps: {
         inline: ['graphql', '@apollo/subgraph', 'graphql-yoga'],
