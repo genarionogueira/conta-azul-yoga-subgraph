@@ -42,7 +42,7 @@ import os
 import secrets
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlsplit, urlunsplit, urlparse, urlunparse
 
 env_file = Path(sys.argv[1])
 out_file = Path(sys.argv[2])
@@ -91,6 +91,38 @@ def redis_url_from_admin_uri(export_text: str, db_index: str) -> str:
     return urlunparse(parsed._replace(path=f"/{db_index}"))
 
 
+# Dev droplet containers reach managed Mongo only on the VPC private hostname.
+DEV_MONGO_PUBLIC_HOST = "avcd-dev-mongo-1b007f0-e60b28c6.mongo.ondigitalocean.com"
+DEV_MONGO_PRIVATE_HOST = (
+    "private-avcd-dev-mongo-1b007f0-7bafc248.mongo.ondigitalocean.com"
+)
+
+
+def mongo_host_for_deploy(hostname):
+    if not hostname:
+        raise SystemExit("❌ Mongo hostname missing from connection URL")
+    override = os.environ.get("MONGODB_PRIVATE_HOST", "").strip()
+    if override:
+        return override
+    if hostname == DEV_MONGO_PUBLIC_HOST:
+        return DEV_MONGO_PRIVATE_HOST
+    return hostname
+
+
+def mongodb_url_for_deploy(mongo_uri: str, database: str) -> str:
+    split = urlsplit(mongo_uri)
+    if not split.scheme or not split.netloc:
+        raise SystemExit("❌ Mongo connection URL is invalid")
+    host = mongo_host_for_deploy(split.hostname)
+    userinfo = split.username or ""
+    if split.password:
+        userinfo = f"{split.username}:{split.password}"
+    netloc = f"{userinfo}@{host}" if userinfo else host
+    if split.port:
+        netloc = f"{netloc}:{split.port}"
+    return urlunsplit((split.scheme, netloc, f"/{database}", split.query, split.fragment))
+
+
 def mongodb_url_from_ai_export(export_text: str, database: str = "conta_azul_yoga") -> str:
     mongo_uri = ""
     for line in export_text.splitlines():
@@ -99,10 +131,7 @@ def mongodb_url_from_ai_export(export_text: str, database: str = "conta_azul_yog
             break
     if not mongo_uri:
         raise SystemExit("❌ MONGO_URI not found in avcd-ai Infisical export (/ai dev)")
-    parsed = urlparse(mongo_uri)
-    if not parsed.scheme or not parsed.netloc:
-        raise SystemExit("❌ MONGO_URI from Infisical is not a valid URL")
-    return urlunparse(parsed._replace(path=f"/{database}"))
+    return mongodb_url_for_deploy(mongo_uri, database)
 
 
 local = parse_dotenv(env_file.read_text(encoding="utf-8"))
@@ -111,6 +140,10 @@ redis_url = redis_url_from_admin_uri(ai_export, redis_db_index)
 mongodb_url = local.get("MONGODB_URL", "")
 if not valid_deploy_secret(mongodb_url):
     mongodb_url = mongodb_url_from_ai_export(ai_export)
+else:
+    parsed_mongo = urlsplit(mongodb_url)
+    db_name = parsed_mongo.path.strip("/") or "conta_azul_yoga"
+    mongodb_url = mongodb_url_for_deploy(mongodb_url, db_name)
 
 jwt_secret = local.get("JWT_SECRET", "")
 if not valid_deploy_secret(jwt_secret, max_len=128):
