@@ -40,9 +40,9 @@ Record `INFISICAL_PROJECT_ID` and machine identity OIDC ID from Infisical UI.
 
 Provision a database user on the managed Mongo cluster (same as API):
 
-1. Get admin URI from pulumi `dev` stack output.
-2. Create database/user (e.g. `conta_azul_yoga`).
-3. Set `MONGODB_URL` in local `.env` before bootstrap.
+1. Bootstrap derives `MONGODB_URL` from avcd-ai `/ai` `MONGO_URI` credentials.
+2. **Use `mongodb+srv://`** with the cluster seed host (`avcd-dev-mongo-1b007f0-e60b28c6.mongo.ondigitalocean.com`) — plain `mongodb://` hostnames do not resolve on the dev droplet; SRV lookup is required (same as avcd-ai).
+3. Database path: `/conta_azul_yoga`.
 
 ### 3. App secrets (Infisical `dev` → `/conta-azul-yoga-subgraph`)
 
