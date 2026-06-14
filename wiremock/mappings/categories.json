@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/categorias"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": [
+      { "id": "cat-1", "nome": "Receitas", "tipo": "RECEITA" },
+      { "id": "cat-2", "nome": "Despesas", "tipo": "DESPESA" }
+    ]
+  }
+}

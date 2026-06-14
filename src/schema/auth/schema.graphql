@@ -1,0 +1,27 @@
+extend type Query {
+  contaAzulAuthConfig: ContaAzulAuthConfig!
+  authorizationUrl(storeId: ID!): OAuthUrl!
+}
+
+extend type Mutation {
+  setupConnection(storeId: ID!, code: String!, state: String!): SetupResult!
+}
+
+type ContaAzulAuthConfig {
+  redirectUri: String
+  authUrl: String!
+  tokenUrl: String!
+  clientIdConfigured: Boolean!
+}
+
+type OAuthUrl {
+  storeId: ID!
+  url: String!
+  state: String!
+}
+
+type SetupResult {
+  success: Boolean!
+  storeId: ID!
+  error: String
+}

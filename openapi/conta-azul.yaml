@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: Conta Azul API v2
+  version: 2.0.0
+servers:
+  - url: https://api-v2.contaazul.com
+paths:
+  /v1/categorias:
+    get:
+      operationId: listCategorias
+      summary: List financial categories
+      parameters:
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: tamanho_pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/Categoria"
+                  - $ref: "#/components/schemas/CategoriasPaginated"
+components:
+  schemas:
+    Categoria:
+      type: object
+      required: [id, nome, tipo]
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        tipo:
+          type: string
+    CategoriasPaginated:
+      type: object
+      properties:
+        itens_totais:
+          type: integer
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/Categoria"

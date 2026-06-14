@@ -1,0 +1,95 @@
+extend schema
+  @link(
+    url: "https://specs.apollo.dev/federation/v2.0"
+    import: ["@key", "@shareable"]
+  )
+
+type Query
+type Mutation
+
+input StringComparisonExp {
+  _eq: String
+  _neq: String
+  _in: [String!]
+  _nin: [String!]
+  _like: String
+  _ilike: String
+  _regex: String
+  _is_null: Boolean
+}
+
+input IDComparisonExp {
+  _eq: ID
+  _neq: ID
+  _in: [ID!]
+  _nin: [ID!]
+  _is_null: Boolean
+}
+
+input BooleanComparisonExp {
+  _eq: Boolean
+  _neq: Boolean
+  _is_null: Boolean
+}
+
+input IntComparisonExp {
+  _eq: Int
+  _neq: Int
+  _gt: Int
+  _gte: Int
+  _lt: Int
+  _lte: Int
+  _in: [Int!]
+  _nin: [Int!]
+  _is_null: Boolean
+}
+
+input FloatComparisonExp {
+  _eq: Float
+  _neq: Float
+  _gt: Float
+  _gte: Float
+  _lt: Float
+  _lte: Float
+  _in: [Float!]
+  _nin: [Float!]
+  _is_null: Boolean
+}
+
+enum order_by {
+  asc
+  asc_nulls_first
+  asc_nulls_last
+  desc
+  desc_nulls_first
+  desc_nulls_last
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+enum CategoryQueryDiagnosticCode {
+  STORE_NOT_CONNECTED
+  TOKEN_MISSING
+  DATA_NOT_SYNCED
+  NO_CONNECTED_STORES
+  REDIS_UNAVAILABLE
+}
+
+type CategoryQueryDiagnostic @shareable {
+  code: CategoryQueryDiagnosticCode!
+  message: String!
+  hint: String!
+  storeId: ID
+}
+
+type SyncResult {
+  syncedCount: Int!
+  syncedAt: String!
+  status: String!
+  errorMessage: String
+}

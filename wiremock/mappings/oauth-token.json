@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/oauth2/token"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "access_token": "e2e-access-token",
+      "refresh_token": "e2e-refresh-token",
+      "expires_in": 3600,
+      "token_type": "Bearer"
+    }
+  }
+}

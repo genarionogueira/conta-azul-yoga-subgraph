@@ -1,0 +1,43 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', 'db.runCommand("ping").ok']
+      interval: 5s
+      retries: 5
+
+  yoga-subgraph:
+    build: .
+    ports:
+      - '${PORT:-4000}:4000'
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: '4000'
+      NODE_ENV: development
+      # Override in .env to share tokens with conta-azul-service, e.g. redis://host.docker.internal:6379
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MONGODB_URL: mongodb://mongo:27017/conta_azul
+      CONTA_AZUL_API_BASE_URL: https://api-v2.contaazul.com
+      CONTA_AZUL_TOKEN_URL: https://auth.contaazul.com/oauth2/token
+      CONTA_AZUL_REDIRECT_URI: https://dev.avocado.tech/conta-azul-service/callback
+      CONTA_AZUL_AUTH_URL: https://auth.contaazul.com/login
+      CONTA_AZUL_OAUTH_SCOPE: openid profile aws.cognito.signin.user.admin
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/health']
+      interval: 10s
+      timeout: 5s
+      retries: 3

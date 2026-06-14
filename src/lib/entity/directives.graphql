@@ -1,0 +1,5 @@
+directive @model on OBJECT
+directive @mongo(collection: String!) on OBJECT
+directive @rest(adapter: String!, list: String!) on OBJECT
+directive @cache(ttl: String!) on OBJECT
+directive @tenant(field: String!) on OBJECT
