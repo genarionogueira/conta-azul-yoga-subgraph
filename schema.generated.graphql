@@ -23,6 +23,8 @@ type Query {
   _service: _Service!
   contaAzulAuthConfig: ContaAzulAuthConfig!
   authorizationUrl(storeId: ID!): OAuthUrl!
+  connectionStatus(storeId: ID!): ConnectionStatus!
+  connectedStores: [ConnectedStoreSummary!]!
   hello: String!
   contaAzulCategories(where: ContaAzulCategory_bool_exp, order_by: [ContaAzulCategory_order_by!], distinct_on: [ContaAzulCategory_select_column!], first: Int, after: String, last: Int, before: String): ContaAzulCategoryConnection!
   contaAzulCategoriesAggregate(where: ContaAzulCategory_bool_exp, distinct_on: [ContaAzulCategory_select_column!]): ContaAzulCategory_aggregate!
@@ -30,6 +32,7 @@ type Query {
 
 type Mutation {
   setupConnection(storeId: ID!, code: String!, state: String!): SetupResult!
+  disconnectStore(storeId: ID!): DisconnectResult!
   syncContaAzulCategories(storeId: ID): SyncResult!
 }
 
@@ -47,6 +50,22 @@ type OAuthUrl {
 }
 
 type SetupResult {
+  success: Boolean!
+  storeId: ID!
+  error: String
+}
+
+type ConnectionStatus {
+  storeId: ID!
+  isConnected: Boolean!
+  error: String
+}
+
+type ConnectedStoreSummary {
+  storeId: ID!
+}
+
+type DisconnectResult {
   success: Boolean!
   storeId: ID!
   error: String
