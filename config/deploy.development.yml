@@ -1,10 +1,7 @@
 # Development overrides (Kamal merge destination: development)
 env:
   clear:
-    KEYCLOAK_ENABLED: "true"
-    KEYCLOAK_URL: https://auth.avcd.ai
-    KEYCLOAK_REALM: avcd
-    KEYCLOAK_AUDIENCE: https://dev.avocado.tech/conta-azul-yoga-subgraph
-    KEYCLOAK_ISSUER: https://auth.avcd.ai/realms/avcd
+    KEYCLOAK_ENABLED: "false"
     ZITADEL_ISSUER: https://zitadel.avcd.ai
+    ZITADEL_PROJECT_ID: __ZITADEL_PROJECT_ID__
     JWT_REQUIRED: "true"

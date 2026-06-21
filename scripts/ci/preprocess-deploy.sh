@@ -17,6 +17,7 @@ for f in config/deploy.yml config/deploy.development.yml config/deploy.productio
     -e "s|__DO_DEPLOY_USER__|${DO_DEPLOY_USER}|g" \
     -e "s|__DO_PUBLIC_HOST__|${DO_PUBLIC_HOST}|g" \
     -e "s|__DOCR_REGISTRY_SERVER__|${REGISTRY_SERVER}|g" \
+    -e "s|__ZITADEL_PROJECT_ID__|${ZITADEL_PROJECT_ID:?Set ZITADEL_PROJECT_ID}|g" \
     "$f"
   rm -f "${f}.bak"
 done

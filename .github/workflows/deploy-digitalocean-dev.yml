@@ -67,9 +67,10 @@ jobs:
           INFISICAL_OIDC_IDENTITY_ID: ${{ vars.INFISICAL_OIDC_IDENTITY_ID }}
           DO_DEPLOY_HOST: ${{ vars.DO_DEPLOY_HOST }}
           DO_PUBLIC_HOST: ${{ vars.DO_PUBLIC_HOST || vars.PUBLIC_HOST }}
+          ZITADEL_PROJECT_ID: ${{ vars.ZITADEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          for key in DO_DEPLOY_SSH_KEY INFISICAL_PROJECT_ID INFISICAL_OIDC_IDENTITY_ID DO_DEPLOY_HOST DO_PUBLIC_HOST; do
+          for key in DO_DEPLOY_SSH_KEY INFISICAL_PROJECT_ID INFISICAL_OIDC_IDENTITY_ID DO_DEPLOY_HOST DO_PUBLIC_HOST ZITADEL_PROJECT_ID; do
             val="${!key:-}"
             [ -n "$val" ] || { echo "::error::Missing $key on development environment"; exit 1; }
             echo "✓ $key is set"
@@ -95,6 +96,7 @@ jobs:
           DO_DEPLOY_USER: ${{ env.DEPLOY_USER }}
           DO_PUBLIC_HOST: ${{ steps.deploy.outputs.public_host }}
           GHCR_REGISTRY_URL: ${{ steps.deploy.outputs.registry_url }}
+          ZITADEL_PROJECT_ID: ${{ vars.ZITADEL_PROJECT_ID }}
         run: |
           chmod +x scripts/ci/preprocess-deploy.sh
           ./scripts/ci/preprocess-deploy.sh
