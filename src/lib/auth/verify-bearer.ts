@@ -1,9 +1,6 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
 
-import {
-  type AuthSettings,
-  zitadelProjectAudience,
-} from './settings.js'
+import { type AuthSettings } from './settings.js'
 
 export class BearerAuthError extends Error {
   readonly statusCode: number
@@ -52,7 +49,10 @@ async function verifyZitadelToken(
 
   const verifyOptions: Parameters<typeof jwtVerify>[2] = { issuer }
   if (settings.zitadelProjectId) {
-    verifyOptions.audience = zitadelProjectAudience(settings.zitadelProjectId)
+    // Zitadel adds the raw project ID to the token `aud` claim when the client
+    // requests the `urn:zitadel:iam:org:project:id:{id}:aud` scope. The URN is
+    // the request scope, never the audience value, so validate the bare ID.
+    verifyOptions.audience = settings.zitadelProjectId
   }
 
   const { payload } = await jwtVerify(token, getJwks(`${issuer}/oauth/v2/keys`), verifyOptions)

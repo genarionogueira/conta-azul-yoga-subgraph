@@ -30,7 +30,3 @@ export function loadAuthSettings(): AuthSettings {
     jwtAudience: process.env.JWT_AUDIENCE?.trim() || 'conta-azul-service',
   }
 }
-
-export function zitadelProjectAudience(projectId: string): string {
-  return `urn:zitadel:iam:org:project:id:${projectId}:aud`
-}

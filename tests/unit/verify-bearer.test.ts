@@ -3,10 +3,7 @@ import {
   BearerAuthError,
   extractBearerToken,
 } from '../../src/lib/auth/verify-bearer.js'
-import {
-  loadAuthSettings,
-  zitadelProjectAudience,
-} from '../../src/lib/auth/settings.js'
+import { loadAuthSettings } from '../../src/lib/auth/settings.js'
 
 describe('extractBearerToken', () => {
   it('GivenMissingHeader_WhenExtracting_ThenThrowsBearerAuthError', () => {
@@ -31,14 +28,6 @@ describe('extractBearerToken', () => {
   it('GivenJwt_WhenExtracting_ThenReturnsToken', () => {
     const jwt = 'header.payload.signature'
     expect(extractBearerToken(`Bearer ${jwt}`)).toBe(jwt)
-  })
-})
-
-describe('zitadelProjectAudience', () => {
-  it('GivenProjectId_WhenBuildingAudience_ThenMatchesWebDashScopeFormat', () => {
-    expect(zitadelProjectAudience('proj-123')).toBe(
-      'urn:zitadel:iam:org:project:id:proj-123:aud'
-    )
   })
 })
 
