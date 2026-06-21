@@ -8,6 +8,7 @@ import {
   startConnect,
   type ConnectFlowDeps,
 } from '../lib/auth/connect-flow.js'
+import { buildPostConnectRedirect } from '../lib/oauth-return-url.js'
 
 const templatesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 
@@ -18,6 +19,11 @@ function loadTemplate(name: string): string {
 function sendHtml(res: ServerResponse, status: number, body: string): void {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' })
   res.end(body)
+}
+
+function sendRedirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, { Location: location })
+  res.end()
 }
 
 function renderConnectPage(storeId: string): string {
@@ -111,6 +117,12 @@ export async function handleConnectRequest(
     const result = await completeConnectFromCallback(code, state, deps.connectFlow)
     if (!result.success) {
       sendHtml(res, 200, renderErrorPage(result.error))
+      return true
+    }
+
+    const redirectTarget = buildPostConnectRedirect(result.storeId, result.returnUrl)
+    if (redirectTarget) {
+      sendRedirect(res, redirectTarget)
       return true
     }
 

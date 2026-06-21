@@ -6,8 +6,8 @@ import type { TokenResolver } from '../token-resolver.js'
 export type StartConnectResult = { storeId: string; url: string; state: string }
 
 export type CompleteConnectResult =
-  | { success: true; storeId: string }
-  | { success: false; storeId: string; error: string }
+  | { success: true; storeId: string; returnUrl?: string }
+  | { success: false; storeId: string; error: string; returnUrl?: string }
 
 export interface ConnectFlowDeps {
   authConfig: AuthConfig
@@ -24,7 +24,8 @@ function requireStoreId(storeId: string): void {
 async function exchangeAndSaveToken(
   storeId: string,
   code: string,
-  deps: ConnectFlowDeps
+  deps: ConnectFlowDeps,
+  returnUrl?: string
 ): Promise<CompleteConnectResult> {
   try {
     const redirectUri = deps.authConfig.requireRedirectUri()
@@ -36,16 +37,17 @@ async function exchangeAndSaveToken(
       tokenUrl: deps.authConfig.getTokenUrl(),
     })
     await deps.tokenResolver.saveToken(storeId, token)
-    return { success: true, storeId }
+    return { success: true, storeId, returnUrl }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
-    return { success: false, storeId, error: message }
+    return { success: false, storeId, error: message, returnUrl }
   }
 }
 
 export async function startConnect(
   storeId: string,
-  deps: ConnectFlowDeps
+  deps: ConnectFlowDeps,
+  returnUrl?: string
 ): Promise<StartConnectResult> {
   requireStoreId(storeId)
   const redirectUri = deps.authConfig.requireRedirectUri()
@@ -53,7 +55,7 @@ export async function startConnect(
   if (!clientId) {
     throw new AuthConfigError('CONTA_AZUL_CLIENT_ID is not configured')
   }
-  const state = await deps.oauthStateStore.createState(storeId)
+  const state = await deps.oauthStateStore.createState(storeId, returnUrl)
   const url = buildAuthorizationUrl({
     clientId,
     redirectUri,
@@ -71,15 +73,15 @@ export async function completeConnect(
   deps: ConnectFlowDeps
 ): Promise<CompleteConnectResult> {
   requireStoreId(storeId)
-  const storedStoreId = await deps.oauthStateStore.consumeState(state)
-  if (!storedStoreId || storedStoreId !== storeId) {
+  const payload = await deps.oauthStateStore.consumeState(state)
+  if (!payload || payload.storeId !== storeId) {
     return {
       success: false,
       storeId,
       error: 'Invalid or expired OAuth state',
     }
   }
-  return exchangeAndSaveToken(storeId, code, deps)
+  return exchangeAndSaveToken(storeId, code, deps, payload.returnUrl)
 }
 
 /** OAuth callback handler — storeId is resolved from consumed state only. */
@@ -88,13 +90,13 @@ export async function completeConnectFromCallback(
   state: string,
   deps: ConnectFlowDeps
 ): Promise<CompleteConnectResult> {
-  const storedStoreId = await deps.oauthStateStore.consumeState(state)
-  if (!storedStoreId) {
+  const payload = await deps.oauthStateStore.consumeState(state)
+  if (!payload) {
     return {
       success: false,
       storeId: '',
       error: 'Invalid or expired OAuth state',
     }
   }
-  return exchangeAndSaveToken(storedStoreId, code, deps)
+  return exchangeAndSaveToken(payload.storeId, code, deps, payload.returnUrl)
 }

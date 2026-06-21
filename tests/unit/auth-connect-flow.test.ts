@@ -52,7 +52,7 @@ describe('connect-flow', () => {
     expect(result.state).toBe('state-abc')
     expect(result.url).toContain('client_id=test-client-id')
     expect(result.url).toContain('redirect_uri=')
-    expect(oauthStateStore.createState).toHaveBeenCalledWith('store-1')
+    expect(oauthStateStore.createState).toHaveBeenCalledWith('store-1', undefined)
   })
 
   it('GivenMissingClientId_WhenStartConnect_ThenThrowsAuthConfigError', async () => {
@@ -70,7 +70,7 @@ describe('connect-flow', () => {
   })
 
   it('GivenValidCodeAndState_WhenCompleteConnect_ThenSavesToken', async () => {
-    vi.mocked(oauthStateStore.consumeState).mockResolvedValue('store-1')
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue({ storeId: 'store-1' })
     vi.mocked(tokenResolver.saveToken).mockResolvedValue(undefined)
     vi.mocked(fetch).mockResolvedValue(
       new Response(
@@ -93,7 +93,7 @@ describe('connect-flow', () => {
   })
 
   it('GivenMismatchedState_WhenCompleteConnect_ThenReturnsError', async () => {
-    vi.mocked(oauthStateStore.consumeState).mockResolvedValue('other-store')
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue({ storeId: 'other-store' })
 
     const result = await completeConnect('store-1', 'auth-code', 'valid-state', deps)
 
@@ -112,7 +112,7 @@ describe('connect-flow', () => {
   })
 
   it('GivenTokenExchangeFailure_WhenCompleteConnect_ThenReturnsError', async () => {
-    vi.mocked(oauthStateStore.consumeState).mockResolvedValue('store-1')
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue({ storeId: 'store-1' })
     vi.mocked(fetch).mockResolvedValue(new Response('error', { status: 401 }))
 
     const result = await completeConnect('store-1', 'bad-code', 'valid-state', deps)
@@ -122,7 +122,7 @@ describe('connect-flow', () => {
   })
 
   it('GivenValidCallback_WhenCompleteConnectFromCallback_ThenSavesToken', async () => {
-    vi.mocked(oauthStateStore.consumeState).mockResolvedValue('store-cb')
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue({ storeId: 'store-cb' })
     vi.mocked(tokenResolver.saveToken).mockResolvedValue(undefined)
     vi.mocked(fetch).mockResolvedValue(
       new Response(

@@ -119,7 +119,31 @@ describe('connect-routes', () => {
     expect(res.body.toLowerCase()).toContain('store_id')
   })
 
-  it('GivenCodeAndState_WhenCallback_ThenSuccessHtml', async () => {
+  it('GivenCodeAndState_WhenCallback_ThenRedirectsToWebDash', async () => {
+    process.env.WEB_DASH_PUBLIC_URL = 'https://dev.avocado.tech'
+    vi.mocked(completeConnectFromCallback).mockResolvedValue({
+      success: true,
+      storeId: 'store-1',
+      returnUrl: 'https://dev.avocado.tech/',
+    })
+    const res = createMockResponse()
+
+    await handleConnectRequest(
+      createRequest(),
+      res,
+      '/callback',
+      new URLSearchParams({ code: 'abc', state: 'xyz' }),
+      deps
+    )
+
+    expect(res.statusCode).toBe(302)
+    expect(res.headers.Location).toBe(
+      'https://dev.avocado.tech/?contaAzulConnected=store-1'
+    )
+  })
+
+  it('GivenCodeAndStateWithoutReturnUrl_WhenCallback_ThenFallsBackToSuccessHtml', async () => {
+    delete process.env.WEB_DASH_PUBLIC_URL
     vi.mocked(completeConnectFromCallback).mockResolvedValue({
       success: true,
       storeId: 'store-1',

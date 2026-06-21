@@ -1,6 +1,6 @@
 extend type Query {
   contaAzulAuthConfig: ContaAzulAuthConfig!
-  authorizationUrl(storeId: ID!): OAuthUrl!
+  authorizationUrl(storeId: ID!, returnUrl: String): OAuthUrl!
   connectionStatus(storeId: ID!): ConnectionStatus!
   connectedStores: [ConnectedStoreSummary!]!
 }
