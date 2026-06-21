@@ -1,6 +1,8 @@
-import { createServer } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createYoga } from 'graphql-yoga'
 import { createYogaMaskError } from './lib/errors/index.js'
+import { authenticateRequest, BearerAuthError } from './lib/auth/verify-bearer.js'
+import { loadAuthSettings } from './lib/auth/settings.js'
 import { buildContext, getContaAzulClientForStore, listConnectedStoreIds } from './context.js'
 import { initMongo, getDb, closeMongo } from './lib/mongo/connection.js'
 import { ensureCategoriesIndexes } from './lib/mongo/indexes.js'
@@ -10,6 +12,47 @@ import { handleConnectRequest } from './http/connect-routes.js'
 import { authConfig, authTokenResolver, oauthStateStore } from './schema/auth/oauth-services.js'
 
 const PORT = Number(process.env.PORT ?? 4000)
+const authSettings = loadAuthSettings()
+
+function sendAuthError(res: ServerResponse, error: BearerAuthError): void {
+  res.writeHead(error.statusCode, {
+    'Content-Type': 'application/json',
+    'WWW-Authenticate': error.wwwAuthenticate,
+  })
+  res.end(JSON.stringify({ error: error.message }))
+}
+
+async function ensureAuthenticated(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<boolean> {
+  if (!authSettings.jwtRequired) {
+    return true
+  }
+
+  try {
+    const headers = new Headers()
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (typeof value === 'string') {
+        headers.set(key, value)
+      } else if (Array.isArray(value)) {
+        headers.set(key, value.join(', '))
+      }
+    }
+
+    await authenticateRequest(new Request('http://localhost/graphql', { headers }), authSettings)
+    return true
+  } catch (error) {
+    if (error instanceof BearerAuthError) {
+      sendAuthError(res, error)
+      return false
+    }
+
+    console.error('Authentication error:', error)
+    sendAuthError(res, new BearerAuthError('Authentication failed'))
+    return false
+  }
+}
 
 const connectRoutesDeps = {
   connectFlow: {
@@ -73,6 +116,13 @@ async function main(): Promise<void> {
       )
       if (handled) {
         return
+      }
+
+      if (url.pathname === '/graphql') {
+        const allowed = await ensureAuthenticated(req, res)
+        if (!allowed) {
+          return
+        }
       }
 
       yoga(req, res)
