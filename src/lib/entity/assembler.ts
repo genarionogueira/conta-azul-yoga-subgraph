@@ -16,6 +16,14 @@ import { parseEntityDef } from './parse-entity.js'
 import { bindEntityResolvers } from './resolvers.js'
 import type { EntityDef } from './types.js'
 import { registerContaAzulAdapter } from './contaazul-adapter.js'
+import type { GraphQLFieldResolver } from 'graphql'
+import type { AppContext } from '../../context.js'
+
+function bindAppContextResolver<TArgs>(
+  resolver: (parent: unknown, args: TArgs, context: AppContext) => unknown
+): GraphQLFieldResolver<unknown, unknown> {
+  return (parent, args, context) => resolver(parent, args as TArgs, context as AppContext)
+}
 
 const STRIP_DIRECTIVE_DECLARATIONS = new Set(['model', 'mongo', 'rest', 'cache', 'tenant'])
 
@@ -149,19 +157,21 @@ export async function buildEntitySchema(
   const { connectedStores } = await import('../../schema/auth/resolvers/Query/connectedStores.js')
   const { hello } = await import('../../schema/hello/resolvers/Query/hello.js')
   const { setupConnection } = await import('../../schema/auth/resolvers/Mutation/setupConnection.js')
+  const { completeOAuthCallback } = await import('../../schema/auth/resolvers/Mutation/completeOAuthCallback.js')
   const { disconnectStore } = await import('../../schema/auth/resolvers/Mutation/disconnectStore.js')
 
   const manualResolvers: GraphQLResolverMap<unknown> = {
     Query: {
-      authorizationUrl,
-      contaAzulAuthConfig,
-      connectionStatus,
-      connectedStores,
+      authorizationUrl: bindAppContextResolver(authorizationUrl),
+      contaAzulAuthConfig: bindAppContextResolver(contaAzulAuthConfig),
+      connectionStatus: bindAppContextResolver(connectionStatus),
+      connectedStores: bindAppContextResolver(connectedStores),
       hello,
     },
     Mutation: {
-      setupConnection,
-      disconnectStore,
+      setupConnection: bindAppContextResolver(setupConnection),
+      completeOAuthCallback: bindAppContextResolver(completeOAuthCallback),
+      disconnectStore: bindAppContextResolver(disconnectStore),
     },
   }
 

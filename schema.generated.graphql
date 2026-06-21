@@ -58,11 +58,16 @@ type SetupResult {
 type ConnectionStatus {
   storeId: ID!
   isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
   error: String
 }
 
 type ConnectedStoreSummary {
   storeId: ID!
+  isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
 }
 
 type DisconnectResult {

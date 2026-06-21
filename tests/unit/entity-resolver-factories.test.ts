@@ -6,6 +6,7 @@ import {
   makeSyncResolver,
 } from '../../src/lib/entity/resolvers.js'
 import { clearRestAdaptersForTest, registerRestAdapter } from '../../src/lib/entity/adapters.js'
+import { createTestContext, TEST_TENANT_ID } from '../helpers/test-context.js'
 
 const categoryEntity: EntityDef = {
   name: 'ContaAzulCategory',
@@ -46,6 +47,13 @@ vi.mock('../../src/lib/mongo/connection.js', () => ({
 }))
 
 vi.mock('../../src/context.js', () => ({
+  getTokenStore: () => ({
+    ping: vi.fn().mockResolvedValue(undefined),
+    getToken: vi.fn(),
+    isStoreRegistered: vi.fn(),
+    listRegisteredStoreIds: vi.fn().mockResolvedValue([]),
+    listConnectedStoreIds: vi.fn().mockResolvedValue([]),
+  }),
   getTokenResolver: () => ({
     ping: vi.fn().mockResolvedValue(undefined),
     getToken: vi.fn(),
@@ -71,7 +79,11 @@ describe('entity resolver factories', () => {
 
   it('GivenConnectionFactory_WhenCalledWithWhere_ThenReturnsConnection', async () => {
     const resolver = makeConnectionResolver(categoryEntity)
-    const result = await resolver({}, { where: { storeId: { _eq: 's1' } }, first: 10 })
+    const result = await resolver(
+      {},
+      { where: { storeId: { _eq: 's1' } }, first: 10 },
+      createTestContext()
+    )
     expect(result.nodes.length).toBeGreaterThan(0)
     expect(result.totalCount).toBe(1)
   })
@@ -83,13 +95,13 @@ describe('entity resolver factories', () => {
     } as never)
 
     const resolver = makeConnectionResolver(categoryEntity)
-    await resolver({}, { first: 10 })
+    await resolver({}, { first: 10 }, createTestContext())
     expect(diagnoseEntityQuery).toHaveBeenCalled()
   })
 
   it('GivenAggregateFactory_WhenCalled_ThenReturnsCountFromRepo', async () => {
     const resolver = makeAggregateResolver(categoryEntity)
-    const result = await resolver({}, { where: {} })
+    const result = await resolver({}, { where: {} }, createTestContext())
     expect(result.aggregate.count).toBe(1)
     expect(result.nodes.length).toBeGreaterThan(0)
   })
@@ -97,12 +109,15 @@ describe('entity resolver factories', () => {
   it('GivenSyncFactory_WhenCalled_ThenCallsAdapterFetcherForEachStore', async () => {
     const fetcher = vi.fn().mockResolvedValue([{ id: '1', nome: 'A', tipo: 'R' }])
     registerRestAdapter('contaAzul', {
-      listConnectedStoreIds: async () => ['store-1'],
+      listConnectedStoreIds: async (tenantId: string) => {
+        expect(tenantId).toBe(TEST_TENANT_ID)
+        return ['store-1']
+      },
       getClientForStore: async () => ({ listCategorias: fetcher }),
     })
 
     const resolver = makeSyncResolver(categoryEntity)
-    const result = await resolver({}, {})
+    const result = await resolver({}, {}, createTestContext())
     expect(fetcher).toHaveBeenCalled()
     expect(result.status).toBe('success')
   })
@@ -117,7 +132,7 @@ describe('entity resolver factories', () => {
     })
 
     const resolver = makeSyncResolver(categoryEntity)
-    await resolver({}, { storeId: 'store-1' })
+    await resolver({}, { storeId: 'store-1' }, createTestContext())
     expect(listConnected).not.toHaveBeenCalled()
   })
 
@@ -136,7 +151,7 @@ describe('entity resolver factories', () => {
     })
 
     const resolver = makeSyncResolver(categoryEntity)
-    const result = await resolver({}, { storeId: 'store-1' })
+    const result = await resolver({}, { storeId: 'store-1' }, createTestContext())
     expect(result.status).toBe('error')
     expect(result.errorMessage).toContain('api down')
   })

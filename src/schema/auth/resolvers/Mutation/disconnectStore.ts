@@ -1,20 +1,16 @@
-import { authTokenResolver } from '../../oauth-services.js'
+import type { AppContext } from '../../../../context.js'
+import { requireTenant } from '../../../../lib/auth/tenant-context.js'
+import { connectionService } from '../../oauth-services.js'
 
 export async function disconnectStore(
   _parent: unknown,
-  args: { storeId: string }
+  args: { storeId: string },
+  context: AppContext
 ) {
-  const deleted = await authTokenResolver.deleteToken(args.storeId)
-  if (!deleted) {
-    return {
-      success: false,
-      storeId: args.storeId,
-      error: `Store ${args.storeId} is not connected`,
-    }
-  }
-  return {
-    success: true,
-    storeId: args.storeId,
-    error: null,
-  }
+  const tenantId = requireTenant(context)
+  return connectionService.disconnect(
+    tenantId,
+    args.storeId,
+    context.authClaims as Record<string, unknown> | undefined
+  )
 }

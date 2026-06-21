@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { Redis } from 'ioredis'
 import { gqlRaw } from './helpers/gql-client.js'
+import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
+import { reseedDefaultE2eConnections } from './setup.js'
+
+const CONNECTED_STORES_KEY = `conta_azul:connected_stores:${DEFAULT_DEV_TENANT_ID}`
 
 const QUERY = '{ contaAzulCategories { nodes { storeId id nome tipo } } }'
 
@@ -41,29 +45,29 @@ describe('E2E: contaAzulCategories multi-store aggregation', () => {
 
   describe('GivenNoConnectedStores_WhenQuerying_ThenReturnsCachedCategories', () => {
     let redis: Redis
-    const backups = new Map<string, string>()
 
     beforeAll(async () => {
       redis = new Redis(getRedisUrl())
       let cursor = '0'
       do {
-        const [next, keys] = await redis.scan(cursor, 'MATCH', 'conta_azul:token:*', 'COUNT', 100)
+        const [next, keys] = await redis.scan(
+          cursor,
+          'MATCH',
+          `conta_azul:token:${DEFAULT_DEV_TENANT_ID}:*`,
+          'COUNT',
+          100
+        )
         cursor = next
-        for (const key of keys) {
-          const value = await redis.get(key)
-          if (value !== null) {
-            backups.set(key, value)
-          }
-          await redis.del(key)
+        if (keys.length > 0) {
+          await redis.del(...keys)
         }
       } while (cursor !== '0')
+      await redis.del(CONNECTED_STORES_KEY)
     })
 
     afterAll(async () => {
-      for (const [key, value] of backups) {
-        await redis.set(key, value)
-      }
       await redis.quit()
+      await reseedDefaultE2eConnections(getRedisUrl())
     })
 
     it('returns cached MongoDB data with no GraphQL errors', async () => {

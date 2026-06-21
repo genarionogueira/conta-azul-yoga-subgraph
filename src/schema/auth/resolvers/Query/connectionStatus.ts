@@ -1,22 +1,12 @@
-import { authTokenResolver } from '../../oauth-services.js'
+import type { AppContext } from '../../../../context.js'
+import { requireTenant } from '../../../../lib/auth/tenant-context.js'
+import { connectionService } from '../../oauth-services.js'
 
 export async function connectionStatus(
   _parent: unknown,
-  args: { storeId: string }
+  args: { storeId: string },
+  context: AppContext
 ) {
-  try {
-    const token = await authTokenResolver.getToken(args.storeId)
-    return {
-      storeId: args.storeId,
-      isConnected: token !== null,
-      error: null,
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return {
-      storeId: args.storeId,
-      isConnected: false,
-      error: message,
-    }
-  }
+  const tenantId = requireTenant(context)
+  return connectionService.getStatus(tenantId, args.storeId)
 }

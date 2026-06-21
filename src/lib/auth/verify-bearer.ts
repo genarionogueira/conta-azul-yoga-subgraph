@@ -2,6 +2,10 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
 
 import { type AuthSettings } from './settings.js'
 
+export const JWT_CLOCK_TOLERANCE_SECONDS = 5
+export const JWKS_TIMEOUT_MS = 5_000
+export const JWKS_COOLDOWN_MS = 30_000
+
 export class BearerAuthError extends Error {
   readonly statusCode: number
   readonly wwwAuthenticate: string
@@ -33,9 +37,18 @@ const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>()
 function getJwks(url: string) {
   const cached = jwksCache.get(url)
   if (cached) return cached
-  const jwks = createRemoteJWKSet(new URL(url))
+  const jwks = createRemoteJWKSet(new URL(url), {
+    timeoutDuration: JWKS_TIMEOUT_MS,
+    cooldownDuration: JWKS_COOLDOWN_MS,
+  })
   jwksCache.set(url, jwks)
   return jwks
+}
+
+function baseVerifyOptions(): Parameters<typeof jwtVerify>[2] {
+  return {
+    clockTolerance: JWT_CLOCK_TOLERANCE_SECONDS,
+  }
 }
 
 async function verifyZitadelToken(
@@ -47,7 +60,10 @@ async function verifyZitadelToken(
     throw new BearerAuthError('Zitadel auth is not configured')
   }
 
-  const verifyOptions: Parameters<typeof jwtVerify>[2] = { issuer }
+  const verifyOptions: Parameters<typeof jwtVerify>[2] = {
+    ...baseVerifyOptions(),
+    issuer,
+  }
   if (settings.zitadelProjectId) {
     // Zitadel adds the raw project ID to the token `aud` claim when the client
     // requests the `urn:zitadel:iam:org:project:id:{id}:aud` scope. The URN is
@@ -55,7 +71,11 @@ async function verifyZitadelToken(
     verifyOptions.audience = settings.zitadelProjectId
   }
 
-  const { payload } = await jwtVerify(token, getJwks(`${issuer}/oauth/v2/keys`), verifyOptions)
+  const { payload } = await jwtVerify(
+    token,
+    getJwks(`${issuer}/oauth/v2/keys`),
+    verifyOptions
+  )
   return payload
 }
 
@@ -68,7 +88,10 @@ async function verifyKeycloakToken(
     throw new BearerAuthError('Keycloak auth is not configured')
   }
 
-  const verifyOptions: Parameters<typeof jwtVerify>[2] = { issuer }
+  const verifyOptions: Parameters<typeof jwtVerify>[2] = {
+    ...baseVerifyOptions(),
+    issuer,
+  }
   if (settings.keycloakAudience) {
     verifyOptions.audience = settings.keycloakAudience
   }
@@ -88,6 +111,7 @@ async function verifyHs256Token(
 
   const secret = new TextEncoder().encode(settings.jwtSecret)
   const { payload } = await jwtVerify(token, secret, {
+    ...baseVerifyOptions(),
     issuer: settings.jwtIssuer,
     audience: settings.jwtAudience,
     algorithms: ['HS256'],
@@ -140,4 +164,8 @@ export async function authenticateRequest(
 
   const token = extractBearerToken(request.headers.get('authorization'))
   return verifyBearerToken(token, settings)
+}
+
+export function zitadelJwksUrl(issuer: string): string {
+  return `${issuer.replace(/\/$/, '')}/oauth/v2/keys`
 }

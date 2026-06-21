@@ -5,6 +5,7 @@ const STATE_KEY_PREFIX = 'conta_azul:oauth:state:'
 const STATE_TTL_SECONDS = 600
 
 export interface OAuthStatePayload {
+  tenantId: string
   storeId: string
   returnUrl?: string
 }
@@ -14,18 +15,25 @@ function stateKey(state: string): string {
 }
 
 function encodePayload(payload: OAuthStatePayload): string {
-  if (payload.returnUrl) {
-    return JSON.stringify(payload)
-  }
-  return payload.storeId
+  return JSON.stringify(payload)
 }
 
-function decodePayload(raw: string): OAuthStatePayload {
+function decodePayload(raw: string): OAuthStatePayload | null {
   try {
-    const parsed = JSON.parse(raw) as { storeId?: unknown; returnUrl?: unknown }
-    if (typeof parsed.storeId === 'string' && parsed.storeId.trim()) {
+    const parsed = JSON.parse(raw) as {
+      tenantId?: unknown
+      storeId?: unknown
+      returnUrl?: unknown
+    }
+    if (
+      typeof parsed.tenantId === 'string' &&
+      parsed.tenantId.trim() &&
+      typeof parsed.storeId === 'string' &&
+      parsed.storeId.trim()
+    ) {
       return {
-        storeId: parsed.storeId,
+        tenantId: parsed.tenantId.trim(),
+        storeId: parsed.storeId.trim(),
         returnUrl:
           typeof parsed.returnUrl === 'string' && parsed.returnUrl.trim()
             ? parsed.returnUrl
@@ -33,18 +41,22 @@ function decodePayload(raw: string): OAuthStatePayload {
       }
     }
   } catch {
-    /* legacy plain storeId value */
+    /* legacy payloads without tenantId are rejected */
   }
 
-  return { storeId: raw }
+  return null
 }
 
 export class OAuthStateStore {
   constructor(private readonly redis: Redis) {}
 
-  async createState(storeId: string, returnUrl?: string): Promise<string> {
+  async createState(
+    tenantId: string,
+    storeId: string,
+    returnUrl?: string
+  ): Promise<string> {
     const state = randomBytes(32).toString('hex')
-    const payload: OAuthStatePayload = { storeId, returnUrl }
+    const payload: OAuthStatePayload = { tenantId, storeId, returnUrl }
     await this.redis.set(
       stateKey(state),
       encodePayload(payload),

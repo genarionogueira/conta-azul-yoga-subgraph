@@ -31,6 +31,9 @@ services:
       mock-conta-azul:
         condition: service_healthy
     environment:
+      REDIS_URL: redis://redis:6379
+      JWT_REQUIRED: 'false'
+      DEFAULT_DEV_TENANT_ID: dev-tenant
       CONTA_AZUL_API_BASE_URL: http://mock-conta-azul:8080
       CONTA_AZUL_CLIENT_ID: e2e-client-id
       CONTA_AZUL_CLIENT_SECRET: e2e-client-secret

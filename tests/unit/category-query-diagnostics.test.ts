@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { extractStoreIdsFromWhere } from '../../src/lib/diagnostics/extract-store-ids.js'
 import { diagnoseCategoryQuery } from '../../src/lib/diagnostics/category-query.js'
 import { CategoryQueryDiagnosticCode } from '../../src/lib/diagnostics/types.js'
-import type { TokenResolver } from '../../src/lib/token-resolver.js'
+import type { TenantTokenStore } from '../../src/lib/credentials/tenant-token-store.js'
+import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
 describe('extractStoreIdsFromWhere', () => {
   it('GivenStoreIdEq_WhenExtracting_ThenReturnsSingleId', () => {
@@ -28,9 +29,9 @@ describe('extractStoreIdsFromWhere', () => {
   })
 })
 
-function createTokenResolverMock(
-  overrides: Partial<TokenResolver> = {}
-): TokenResolver {
+function createTokenStoreMock(
+  overrides: Partial<TenantTokenStore> = {}
+): TenantTokenStore {
   return {
     ping: vi.fn().mockResolvedValue(undefined),
     getToken: vi.fn().mockResolvedValue(null),
@@ -38,7 +39,7 @@ function createTokenResolverMock(
     listRegisteredStoreIds: vi.fn().mockResolvedValue([]),
     listConnectedStoreIds: vi.fn().mockResolvedValue([]),
     ...overrides,
-  } as unknown as TokenResolver
+  } as unknown as TenantTokenStore
 }
 
 function createDbMock(countForStore: Record<string, number>) {
@@ -71,14 +72,15 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenRegisteredStoreWithoutToken_WhenDiagnosing_ThenReturnsTokenMissing', async () => {
-    const tokenResolver = createTokenResolverMock({
+    const tokenStore = createTokenStoreMock({
       isStoreRegistered: vi.fn().mockResolvedValue(true),
       getToken: vi.fn().mockResolvedValue(null),
     })
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: { storeId: { _eq: 'butanta' } },
-      tokenResolver,
+      tokenStore,
       db: createDbMock({}) as never,
     })
 
@@ -89,7 +91,7 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenTokenWithoutMongoData_WhenDiagnosing_ThenReturnsDataNotSynced', async () => {
-    const tokenResolver = createTokenResolverMock({
+    const tokenStore = createTokenStoreMock({
       isStoreRegistered: vi.fn().mockResolvedValue(true),
       getToken: vi.fn().mockResolvedValue({
         access_token: 'x',
@@ -99,8 +101,9 @@ describe('diagnoseCategoryQuery', () => {
     })
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: { storeId: { _eq: 'butanta' } },
-      tokenResolver,
+      tokenStore,
       db: createDbMock({ butanta: 0 }) as never,
     })
 
@@ -109,14 +112,15 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenUnregisteredStore_WhenDiagnosing_ThenReturnsStoreNotConnected', async () => {
-    const tokenResolver = createTokenResolverMock({
+    const tokenStore = createTokenStoreMock({
       isStoreRegistered: vi.fn().mockResolvedValue(false),
       getToken: vi.fn().mockResolvedValue(null),
     })
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: { storeId: { _eq: 'unknown' } },
-      tokenResolver,
+      tokenStore,
       db: createDbMock({}) as never,
     })
 
@@ -124,11 +128,12 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenNoStoresInRedis_WhenUnscopedQuery_ThenReturnsNoConnectedStores', async () => {
-    const tokenResolver = createTokenResolverMock()
+    const tokenStore = createTokenStoreMock()
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: null,
-      tokenResolver,
+      tokenStore,
       db: createDbMock({}) as never,
     })
 
@@ -136,13 +141,14 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenRedisPingFails_WhenDiagnosing_ThenReturnsRedisUnavailable', async () => {
-    const tokenResolver = createTokenResolverMock({
+    const tokenStore = createTokenStoreMock({
       ping: vi.fn().mockRejectedValue(new Error('connection refused')),
     })
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: { storeId: { _eq: 'butanta' } },
-      tokenResolver,
+      tokenStore,
       db: createDbMock({}) as never,
     })
 
@@ -150,7 +156,7 @@ describe('diagnoseCategoryQuery', () => {
   })
 
   it('GivenMongoHasDataForStore_WhenDiagnosing_ThenReturnsEmptyDiagnostics', async () => {
-    const tokenResolver = createTokenResolverMock({
+    const tokenStore = createTokenStoreMock({
       isStoreRegistered: vi.fn().mockResolvedValue(true),
       getToken: vi.fn().mockResolvedValue({
         access_token: 'x',
@@ -160,8 +166,9 @@ describe('diagnoseCategoryQuery', () => {
     })
 
     const diagnostics = await diagnoseCategoryQuery({
+      tenantId: TEST_TENANT_ID,
       where: { storeId: { _eq: 'butanta' } },
-      tokenResolver,
+      tokenStore,
       db: createDbMock({ butanta: 5 }) as never,
     })
 

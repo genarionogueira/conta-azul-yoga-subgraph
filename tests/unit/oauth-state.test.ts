@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OAuthStateStore } from '../../src/lib/oauth-state.js'
+import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
 describe('OAuthStateStore', () => {
   const redis = {
@@ -18,12 +19,17 @@ describe('OAuthStateStore', () => {
     const store = new OAuthStateStore(redis as never)
     redis.set.mockResolvedValue('OK')
 
-    const state = await store.createState('store-1', 'https://dev.avocado.tech/')
+    const state = await store.createState(
+      TEST_TENANT_ID,
+      'store-1',
+      'https://dev.avocado.tech/'
+    )
 
     expect(state).toMatch(/^[a-f0-9]{64}$/)
     expect(redis.set).toHaveBeenCalledWith(
       `conta_azul:oauth:state:${state}`,
       JSON.stringify({
+        tenantId: TEST_TENANT_ID,
         storeId: 'store-1',
         returnUrl: 'https://dev.avocado.tech/',
       }),
@@ -32,13 +38,27 @@ describe('OAuthStateStore', () => {
     )
   })
 
-  it('GivenLegacyPlainValue_WhenConsumeState_ThenReturnsStoreId', async () => {
+  it('GivenLegacyPlainValue_WhenConsumeState_ThenReturnsNull', async () => {
     const store = new OAuthStateStore(redis as never)
     redis.get.mockResolvedValue('store-legacy')
     redis.del.mockResolvedValue(1)
 
+    await expect(store.consumeState('state-1')).resolves.toBeNull()
+  })
+
+  it('GivenValidJsonPayload_WhenConsumeState_ThenReturnsPayload', async () => {
+    const store = new OAuthStateStore(redis as never)
+    redis.get.mockResolvedValue(
+      JSON.stringify({
+        tenantId: TEST_TENANT_ID,
+        storeId: 'store-1',
+      })
+    )
+    redis.del.mockResolvedValue(1)
+
     await expect(store.consumeState('state-1')).resolves.toEqual({
-      storeId: 'store-legacy',
+      tenantId: TEST_TENANT_ID,
+      storeId: 'store-1',
     })
   })
 })

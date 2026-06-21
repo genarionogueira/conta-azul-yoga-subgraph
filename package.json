@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude 'tests/e2e/**'",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:auth-e2e": "vitest run --config vitest.e2e.auth.config.ts",
     "print:schema": "tsx scripts/print-schema.ts",
     "generate-types": "openapi-typescript openapi/conta-azul.yaml -o src/conta-azul/schema.d.ts"
   },

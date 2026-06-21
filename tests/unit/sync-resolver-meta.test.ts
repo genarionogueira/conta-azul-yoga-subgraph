@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { makeSyncResolver } from '../../src/lib/entity/resolvers.js'
 import type { EntityDef } from '../../src/lib/entity/types.js'
+import { createTestContext } from '../helpers/test-context.js'
 
 const categoryEntity: EntityDef = {
   name: 'ContaAzulCategory',
@@ -57,7 +58,7 @@ describe('makeSyncResolver cache meta', () => {
   })
 
   it('GivenSyncSuccessWithCache_WhenSyncing_ThenWritesMeta', async () => {
-    await syncResolver({}, { storeId: 'store-1' })
+    await syncResolver({}, { storeId: 'store-1' }, createTestContext())
     expect(writeMeta).toHaveBeenCalledWith(
       'conta_azul_categories:store-1',
       86_400_000,
@@ -72,13 +73,13 @@ describe('makeSyncResolver cache meta', () => {
       syncedAt: '',
       errorMessage: 'fail',
     })
-    await syncResolver({}, { storeId: 'store-1' })
+    await syncResolver({}, { storeId: 'store-1' }, createTestContext())
     expect(writeMeta).not.toHaveBeenCalled()
   })
 
   it('GivenNoCacheDirective_WhenSyncing_ThenDoesNotWriteMeta', async () => {
     const noCache = makeSyncResolver({ ...categoryEntity, cache: null })
-    await noCache({}, { storeId: 'store-1' })
+    await noCache({}, { storeId: 'store-1' }, createTestContext())
     expect(writeMeta).not.toHaveBeenCalled()
   })
 })

@@ -7,6 +7,7 @@ extend type Query {
 
 extend type Mutation {
   setupConnection(storeId: ID!, code: String!, state: String!): SetupResult!
+  completeOAuthCallback(code: String!, state: String!): SetupResult!
   disconnectStore(storeId: ID!): DisconnectResult!
 }
 
@@ -32,11 +33,16 @@ type SetupResult {
 type ConnectionStatus {
   storeId: ID!
   isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
   error: String
 }
 
 type ConnectedStoreSummary {
   storeId: ID!
+  isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
 }
 
 type DisconnectResult {

@@ -3,9 +3,12 @@ import { registerRestAdapter, type RestAdapterClient } from './adapters.js'
 
 export function registerContaAzulAdapter(): void {
   registerRestAdapter('contaAzul', {
-    listConnectedStoreIds,
-    getClientForStore: async (storeId: string): Promise<RestAdapterClient | undefined> => {
-      const client = await getContaAzulClientForStore(storeId)
+    listConnectedStoreIds: (tenantId: string) => listConnectedStoreIds(tenantId),
+    getClientForStore: async (
+      tenantId: string,
+      storeId: string
+    ): Promise<RestAdapterClient | undefined> => {
+      const client = await getContaAzulClientForStore(tenantId, storeId)
       if (!client) {
         return undefined
       }
