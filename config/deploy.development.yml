@@ -7,5 +7,4 @@ env:
     KEYCLOAK_AUDIENCE: https://dev.avocado.tech/conta-azul-yoga-subgraph
     KEYCLOAK_ISSUER: https://auth.avcd.ai/realms/avcd
     ZITADEL_ISSUER: https://zitadel.avcd.ai
-    ZITADEL_PROJECT_ID: __ZITADEL_PROJECT_ID__
     JWT_REQUIRED: "true"

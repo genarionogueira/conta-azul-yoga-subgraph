@@ -95,7 +95,6 @@ jobs:
           DO_DEPLOY_USER: ${{ env.DEPLOY_USER }}
           DO_PUBLIC_HOST: ${{ steps.deploy.outputs.public_host }}
           GHCR_REGISTRY_URL: ${{ steps.deploy.outputs.registry_url }}
-          ZITADEL_PROJECT_ID: ${{ vars.ZITADEL_PROJECT_ID }}
         run: |
           chmod +x scripts/ci/preprocess-deploy.sh
           ./scripts/ci/preprocess-deploy.sh
