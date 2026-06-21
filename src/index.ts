@@ -22,6 +22,36 @@ function sendAuthError(res: ServerResponse, error: BearerAuthError): void {
   res.end(JSON.stringify({ error: error.message }))
 }
 
+// Diagnostic only: describe the inbound bearer token shape WITHOUT verifying it,
+// so a 401 reveals whether the request had no token, an opaque token, or a JWT
+// whose iss/aud/exp explains the rejection. iss/aud are not secrets.
+function describeBearer(req: IncomingMessage): string {
+  const raw = req.headers['authorization']
+  const header = Array.isArray(raw) ? raw[0] : raw
+  if (!header) return 'no-authorization-header'
+  if (!header.startsWith('Bearer ')) return 'non-bearer-scheme'
+
+  const token = header.slice('Bearer '.length).trim()
+  const segments = token.split('.')
+  if (segments.length !== 3) return `opaque-token segments=${segments.length}`
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(segments[1], 'base64url').toString('utf8')
+    ) as { iss?: string; aud?: unknown; exp?: number }
+    const aud = Array.isArray(payload.aud)
+      ? payload.aud.join(',')
+      : String(payload.aud ?? '')
+    const expired =
+      typeof payload.exp === 'number'
+        ? String(payload.exp * 1000 < Date.now())
+        : 'unknown'
+    return `jwt iss=${payload.iss ?? ''} aud=[${aud}] expired=${expired}`
+  } catch {
+    return 'jwt-undecodable-payload'
+  }
+}
+
 async function ensureAuthenticated(
   req: IncomingMessage,
   res: ServerResponse
@@ -44,6 +74,9 @@ async function ensureAuthenticated(
     return true
   } catch (error) {
     if (error instanceof BearerAuthError) {
+      console.warn(
+        `[auth] 401 reason="${error.message}" token=${describeBearer(req)}`
+      )
       sendAuthError(res, error)
       return false
     }
