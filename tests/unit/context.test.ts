@@ -1,20 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockEnsureFreshToken = vi.fn()
+const mockGetClientForStore = vi.fn()
 
 vi.mock('ioredis', () => ({
   Redis: vi.fn(),
 }))
 
-vi.mock('../../src/lib/token-resolver.js', () => ({
-  TokenResolver: vi.fn(() => ({
-    ensureFreshToken: mockEnsureFreshToken,
-  })),
-  TokenNotFoundError: class TokenNotFoundError extends Error {},
-  TokenRefreshError: class TokenRefreshError extends Error {},
+vi.mock('../../src/lib/credentials/index.js', () => ({
+  connectionService: {
+    getClientForStore: (...args: unknown[]) => mockGetClientForStore(...args),
+    listConnectedStoreIds: vi.fn(),
+  },
+  tenantTokenStore: {},
+}))
+
+vi.mock('../../src/lib/auth/request-auth-store.js', () => ({
+  getRequestAuthClaims: vi.fn(() => undefined),
 }))
 
 const { buildContext } = await import('../../src/context.js')
+const { TEST_TENANT_ID } = await import('../helpers/test-context.js')
 
 function createRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/graphql', {
@@ -25,14 +30,13 @@ function createRequest(headers: Record<string, string> = {}): Request {
 
 describe('buildContext', () => {
   beforeEach(() => {
-    mockEnsureFreshToken.mockReset()
+    mockGetClientForStore.mockReset()
+    process.env.JWT_REQUIRED = 'false'
   })
 
   it('GivenRequestWithStoreIdHeader_WhenBuildingContext_ThenStoreIdIsExtracted', async () => {
-    mockEnsureFreshToken.mockResolvedValue({
-      access_token: 'token',
-      refresh_token: 'refresh',
-      expires_at: Date.now() + 3_600_000,
+    mockGetClientForStore.mockResolvedValue({
+      listCategorias: vi.fn(),
     })
 
     const context = await buildContext({
@@ -40,6 +44,7 @@ describe('buildContext', () => {
     } as import('graphql-yoga').YogaInitialContext)
 
     expect(context.storeId).toBe('store-1')
+    expect(context.tenantId).toBe(TEST_TENANT_ID)
   })
 
   it('GivenRequestWithNoStoreIdHeader_WhenBuildingContext_ThenStoreIdIsUndefined', async () => {
@@ -49,14 +54,12 @@ describe('buildContext', () => {
 
     expect(context.storeId).toBeUndefined()
     expect(context.contaAzulClient).toBeUndefined()
-    expect(mockEnsureFreshToken).not.toHaveBeenCalled()
+    expect(mockGetClientForStore).not.toHaveBeenCalled()
   })
 
   it('GivenValidStoreId_WhenBuildingContext_ThenContaAzulClientIsDefined', async () => {
-    mockEnsureFreshToken.mockResolvedValue({
-      access_token: 'token',
-      refresh_token: 'refresh',
-      expires_at: Date.now() + 3_600_000,
+    mockGetClientForStore.mockResolvedValue({
+      listCategorias: vi.fn(),
     })
 
     const context = await buildContext({
@@ -65,10 +68,11 @@ describe('buildContext', () => {
 
     expect(context.contaAzulClient).toBeDefined()
     expect(context.contaAzulClient?.listCategorias).toBeTypeOf('function')
+    expect(mockGetClientForStore).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
   })
 
   it('GivenMissingToken_WhenBuildingContext_ThenContaAzulClientIsUndefined', async () => {
-    mockEnsureFreshToken.mockRejectedValue(new Error('No token for store store-unknown'))
+    mockGetClientForStore.mockResolvedValue(undefined)
 
     const context = await buildContext({
       request: createRequest({ 'x-store-id': 'store-unknown' }),

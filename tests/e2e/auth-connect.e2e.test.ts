@@ -93,4 +93,46 @@ describe('E2E: OAuth connect flow', () => {
     expect(result.success).toBe(false)
     expect(result.error).toBeTruthy()
   })
+
+  it('GivenConnectedStore_WhenConnectedStoresQuery_ThenIncludesStore', async () => {
+    const res = await gqlRaw(`{ connectedStores { storeId isConnected } }`)
+    expect(res.errors).toBeUndefined()
+    const stores = (res.data as { connectedStores: Array<{ storeId: string; isConnected: boolean }> })
+      .connectedStores
+    expect(stores.some((s) => s.storeId === AUTH_STORE_ID && s.isConnected)).toBe(true)
+  })
+
+  it('GivenConnectedStore_WhenDisconnectStore_ThenRemovesFromConnectedStores', async () => {
+    const disconnectRes = await gqlRaw(
+      `mutation {
+        disconnectStore(storeId: "${AUTH_STORE_ID}") {
+          success
+          storeId
+          error
+        }
+      }`
+    )
+    expect(disconnectRes.errors).toBeUndefined()
+    const disconnect = (
+      disconnectRes.data as {
+        disconnectStore: { success: boolean; storeId: string; error: string | null }
+      }
+    ).disconnectStore
+    expect(disconnect.success).toBe(true)
+    expect(disconnect.storeId).toBe(AUTH_STORE_ID)
+
+    const listRes = await gqlRaw(`{ connectedStores { storeId isConnected } }`)
+    expect(listRes.errors).toBeUndefined()
+    const stores = (listRes.data as { connectedStores: Array<{ storeId: string }> }).connectedStores
+    expect(stores.some((s) => s.storeId === AUTH_STORE_ID)).toBe(false)
+
+    const statusRes = await gqlRaw(
+      `{ connectionStatus(storeId: "${AUTH_STORE_ID}") { isConnected error } }`
+    )
+    expect(statusRes.errors).toBeUndefined()
+    const status = (
+      statusRes.data as { connectionStatus: { isConnected: boolean; error: string | null } }
+    ).connectionStatus
+    expect(status.isConnected).toBe(false)
+  })
 })

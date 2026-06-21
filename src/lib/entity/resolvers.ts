@@ -1,6 +1,7 @@
 import type { Document } from 'mongodb'
 import type { AppContext } from '../../context.js'
-import { getTokenResolver, listConnectedStoreIds } from '../../context.js'
+import { getTokenStore } from '../../context.js'
+import { requireTenant } from '../auth/tenant-context.js'
 import { ensureFreshCache, logCache, metaKey, parseTtl, writeMeta } from '../cache/index.js'
 import { extractStoreIdsFromWhere } from '../diagnostics/extract-store-ids.js'
 import { diagnoseEntityQuery } from '../diagnostics/generic-query.js'
@@ -25,13 +26,18 @@ async function maybeEnsureFreshCache(
 ): Promise<void> {
   if (!entity.cache) return
 
+  const tenantId = context ? requireTenant(context) : undefined
+  if (!tenantId) return
+
   const fromWhere = extractStoreIdsFromWhere(where ?? null)
   const resolved =
     fromWhere.length > 0
       ? fromWhere
       : context?.storeId
         ? [context.storeId]
-        : await listConnectedStoreIds()
+        : entity.rest
+          ? await getRestAdapter(entity.rest.adapter).listConnectedStoreIds(tenantId)
+          : []
 
   logCache('resolver_ensure_fresh', {
     entity: entity.name,
@@ -39,7 +45,7 @@ async function maybeEnsureFreshCache(
     storeIds: resolved.join(','),
   })
 
-  await ensureFreshCache(entity, { storeIds: resolved, db: getDb() })
+  await ensureFreshCache(entity, { tenantId, storeIds: resolved, db: getDb() })
 }
 
 export function makeConnectionResolver(entity: EntityDef) {
@@ -58,8 +64,9 @@ export function makeConnectionResolver(entity: EntityDef) {
     if (connection.totalCount === 0) {
       connection.diagnostics = await diagnoseEntityQuery({
         entity,
+        tenantId: requireTenant(context),
         where: args.where ?? null,
-        tokenResolver: getTokenResolver(),
+        tokenStore: getTokenStore(),
         db: getDb(),
         syncMutationName: syncMutationName(entity.name),
       })
@@ -98,12 +105,13 @@ export function makeSyncResolver(entity: EntityDef) {
 
   const { adapter: adapterName, list: listMethod } = entity.rest
 
-  return async (_parent: unknown, args: { storeId?: string | null }) => {
+  return async (_parent: unknown, args: { storeId?: string | null }, context?: AppContext) => {
+    const tenantId = requireTenant(context)
     const db = getDb()
     const adapter = getRestAdapter(adapterName)
     const storeIds = args.storeId
       ? [args.storeId]
-      : await adapter.listConnectedStoreIds()
+      : await adapter.listConnectedStoreIds(tenantId)
     const syncedAt = new Date().toISOString()
     let totalSynced = 0
     let successCount = 0
@@ -111,7 +119,7 @@ export function makeSyncResolver(entity: EntityDef) {
     const errors: string[] = []
 
     for (const sid of storeIds) {
-      const client = await adapter.getClientForStore(sid)
+      const client = await adapter.getClientForStore(tenantId, sid)
       if (!client) {
         errorCount += 1
         errors.push(`No token for store ${sid}`)

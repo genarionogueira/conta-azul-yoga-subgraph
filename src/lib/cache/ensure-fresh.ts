@@ -8,19 +8,25 @@ import { globalSingleflight } from './singleflight.js'
 import { parseTtl } from './ttl-parser.js'
 
 export interface EnsureFreshCacheOptions {
+  tenantId: string
   storeIds: string[]
   db: Db
 }
 
-async function resolveStoreIds(entity: EntityDef, storeIds: string[]): Promise<string[]> {
+async function resolveStoreIds(
+  entity: EntityDef,
+  tenantId: string,
+  storeIds: string[]
+): Promise<string[]> {
   if (storeIds.length > 0) return storeIds
   if (!entity.rest) return []
-  const ids = await getRestAdapter(entity.rest.adapter).listConnectedStoreIds()
+  const ids = await getRestAdapter(entity.rest.adapter).listConnectedStoreIds(tenantId)
   return ids ?? []
 }
 
 async function refreshStore(
   entity: EntityDef,
+  tenantId: string,
   storeId: string,
   db: Db
 ): Promise<void> {
@@ -45,7 +51,7 @@ async function refreshStore(
 
     try {
       const adapter = getRestAdapter(entity.rest.adapter)
-      const client = await adapter.getClientForStore(storeId)
+      const client = await adapter.getClientForStore(tenantId, storeId)
       if (!client) {
         logCache('skip_no_token', { key, entity: entity.name, storeId })
         return
@@ -121,7 +127,7 @@ export async function ensureFreshCache(
     return
   }
 
-  const storeIds = await resolveStoreIds(entity, opts.storeIds)
+  const storeIds = await resolveStoreIds(entity, opts.tenantId, opts.storeIds)
   logCache('resolve_store_ids', {
     entity: entity.name,
     storeCount: storeIds.length,
@@ -134,6 +140,6 @@ export async function ensureFreshCache(
   }
 
   for (const storeId of storeIds) {
-    await refreshStore(entity, storeId, opts.db)
+    await refreshStore(entity, opts.tenantId, storeId, opts.db)
   }
 }

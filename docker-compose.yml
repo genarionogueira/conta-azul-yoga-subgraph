@@ -31,9 +31,10 @@ services:
     environment:
       PORT: '4000'
       NODE_ENV: development
-      # Override in .env to share tokens with conta-azul-service, e.g. redis://host.docker.internal:6379
+      JWT_REQUIRED: 'false'
+      # Override in .env to share OAuth state/tokens with deployed callback (see .env.infisical).
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      MONGODB_URL: mongodb://mongo:27017/conta_azul
+      MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/conta_azul}
       CONTA_AZUL_API_BASE_URL: ${CONTA_AZUL_API_BASE_URL:-https://api-v2.contaazul.com}
       CONTA_AZUL_TOKEN_URL: ${CONTA_AZUL_TOKEN_URL:-https://auth.contaazul.com/oauth2/token}
       # web-dash OAuth callback (override to http://localhost:4000/callback for yoga /connect UI only)

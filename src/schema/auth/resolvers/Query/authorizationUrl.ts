@@ -1,17 +1,14 @@
-import { completeConnect, startConnect } from '../../../../lib/auth/connect-flow.js'
+import type { AppContext } from '../../../../context.js'
+import { requireTenant } from '../../../../lib/auth/tenant-context.js'
+import { connectionService } from '../../oauth-services.js'
 import { validateReturnUrl } from '../../../../lib/oauth-return-url.js'
-import { authConfig, authTokenResolver, oauthStateStore } from '../../oauth-services.js'
-
-const connectDeps = {
-  authConfig,
-  oauthStateStore,
-  tokenResolver: authTokenResolver,
-}
 
 export async function authorizationUrl(
   _parent: unknown,
-  args: { storeId: string; returnUrl?: string | null }
+  args: { storeId: string; returnUrl?: string | null },
+  context: AppContext
 ) {
+  const tenantId = requireTenant(context)
   const returnUrl = validateReturnUrl(args.returnUrl ?? undefined) ?? undefined
-  return startConnect(args.storeId, connectDeps, returnUrl)
+  return connectionService.startConnect(tenantId, args.storeId, returnUrl)
 }

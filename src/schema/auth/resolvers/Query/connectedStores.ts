@@ -1,6 +1,8 @@
-import { authTokenResolver } from '../../oauth-services.js'
+import type { AppContext } from '../../../../context.js'
+import { requireTenant } from '../../../../lib/auth/tenant-context.js'
+import { connectionService } from '../../oauth-services.js'
 
-export async function connectedStores() {
-  const storeIds = await authTokenResolver.listConnectedStoreIds()
-  return storeIds.map((storeId) => ({ storeId }))
+export async function connectedStores(_parent: unknown, _args: unknown, context: AppContext) {
+  const tenantId = requireTenant(context)
+  return connectionService.listConnected(tenantId)
 }

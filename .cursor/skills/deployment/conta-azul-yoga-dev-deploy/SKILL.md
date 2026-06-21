@@ -136,6 +136,29 @@ curl -sf -X POST https://dev.avocado.tech/conta-azul-yoga-subgraph/graphql \
   -d '{"query":"{ hello }"}'
 ```
 
+## Local dev with Zitadel JWT auth
+
+Exercise the same auth path as prod without disabling `JWT_REQUIRED`:
+
+```bash
+cp .env.auth.example .env
+# ZITADEL_PROJECT_ID must match web-dash ZITADEL_PROJECT_ID (avcd-web-dash project)
+docker compose -f docker-compose.yml -f docker-compose.auth.yml up --build
+```
+
+Verify:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:4000/graphql \
+  -H 'Content-Type: application/json' -d '{"query":"{ hello }"}'
+# 401
+
+curl -sf http://localhost:4000/ready
+# jwks.ok should be true when ZITADEL_ISSUER is reachable
+```
+
+See [web-dash zitadel-apollo-auth](../../../../web-dash/.cursor/skills/security/zitadel-apollo-auth/SKILL.md) for the full browser → subgraph flow.
+
 ## Common issues
 
 | Issue | Fix |

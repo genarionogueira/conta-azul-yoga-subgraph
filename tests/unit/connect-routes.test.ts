@@ -1,15 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { handleConnectRequest } from '../../src/http/connect-routes.js'
+import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
-vi.mock('../../src/lib/auth/connect-flow.js', () => ({
-  startConnect: vi.fn(),
-  completeConnectFromCallback: vi.fn(),
-}))
+const mockStartConnect = vi.fn()
+const mockCompleteConnectFromCallback = vi.fn()
+const mockAuthenticate = vi.fn()
 
-const { startConnect, completeConnectFromCallback } = await import(
-  '../../src/lib/auth/connect-flow.js'
-)
+const deps = {
+  connectionService: {
+    startConnect: mockStartConnect,
+    completeConnectFromCallback: mockCompleteConnectFromCallback,
+  },
+  authConfig: {} as never,
+  jwtRequired: false,
+  authenticateIncomingRequest: mockAuthenticate,
+}
 
 function createMockResponse(): ServerResponse & {
   statusCode?: number
@@ -36,18 +42,11 @@ function createRequest(method = 'GET'): IncomingMessage {
   return { method } as IncomingMessage
 }
 
-const deps = {
-  connectFlow: {
-    authConfig: {} as never,
-    oauthStateStore: {} as never,
-    tokenResolver: {} as never,
-  },
-}
-
 describe('connect-routes', () => {
   beforeEach(() => {
-    vi.mocked(startConnect).mockReset()
-    vi.mocked(completeConnectFromCallback).mockReset()
+    mockStartConnect.mockReset()
+    mockCompleteConnectFromCallback.mockReset()
+    mockAuthenticate.mockReset()
   })
 
   afterEach(() => {
@@ -85,7 +84,7 @@ describe('connect-routes', () => {
   })
 
   it('GivenStoreId_WhenConnectStart_Then302WithLocation', async () => {
-    vi.mocked(startConnect).mockResolvedValue({
+    mockStartConnect.mockResolvedValue({
       storeId: 'store-1',
       url: 'https://auth.example.com/authorize',
       state: 'state-1',
@@ -100,7 +99,7 @@ describe('connect-routes', () => {
       deps
     )
 
-    expect(startConnect).toHaveBeenCalledWith('store-1', deps.connectFlow)
+    expect(mockStartConnect).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
     expect(res.statusCode).toBe(302)
     expect(res.headers.Location).toBe('https://auth.example.com/authorize')
   })
@@ -121,7 +120,7 @@ describe('connect-routes', () => {
 
   it('GivenCodeAndState_WhenCallback_ThenRedirectsToWebDash', async () => {
     process.env.WEB_DASH_PUBLIC_URL = 'https://dev.avocado.tech'
-    vi.mocked(completeConnectFromCallback).mockResolvedValue({
+    mockCompleteConnectFromCallback.mockResolvedValue({
       success: true,
       storeId: 'store-1',
       returnUrl: 'https://dev.avocado.tech/',
@@ -144,7 +143,7 @@ describe('connect-routes', () => {
 
   it('GivenCodeAndStateWithoutReturnUrl_WhenCallback_ThenFallsBackToSuccessHtml', async () => {
     delete process.env.WEB_DASH_PUBLIC_URL
-    vi.mocked(completeConnectFromCallback).mockResolvedValue({
+    mockCompleteConnectFromCallback.mockResolvedValue({
       success: true,
       storeId: 'store-1',
     })
@@ -178,7 +177,7 @@ describe('connect-routes', () => {
   })
 
   it('GivenInvalidState_WhenCallback_ThenErrorHtml', async () => {
-    vi.mocked(completeConnectFromCallback).mockResolvedValue({
+    mockCompleteConnectFromCallback.mockResolvedValue({
       success: false,
       storeId: '',
       error: 'Invalid or expired OAuth state',
