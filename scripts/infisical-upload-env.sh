@@ -10,7 +10,7 @@ INFISICAL_API_URL="${INFISICAL_API_URL:-https://secrets.avcd.ai/api}"
 INFISICAL_PROJECT_ID="${INFISICAL_PROJECT_ID:?Set INFISICAL_PROJECT_ID}"
 INFISICAL_SECRET_PATH="${INFISICAL_SECRET_PATH:-/conta-azul-yoga-subgraph}"
 INFISICAL_ENV="${INFISICAL_ENV:-dev}"
-INFISICAL_PUSH_FILE="${INFISICAL_PUSH_FILE:-.env.infisical}"
+INFISICAL_PUSH_FILE="${INFISICAL_PUSH_FILE:-.env.development}"
 INFISICAL_CREDENTIALS_FILE="${INFISICAL_CREDENTIALS_FILE:-../infisical/.env}"
 INFISICAL_SECRET_KEYS_FILE="${INFISICAL_SECRET_KEYS_FILE:-$ROOT/config/infisical-secret-keys.list}"
 
@@ -26,7 +26,7 @@ command -v infisical >/dev/null 2>&1 || {
 
 if [[ ! -f "$INFISICAL_PUSH_FILE" ]]; then
   echo "❌ Push source not found: $INFISICAL_PUSH_FILE" >&2
-  echo "   Copy .env.infisical.example → .env.infisical and add secrets." >&2
+  echo "   Copy config/local-env.example → .env.development and add secrets." >&2
   exit 1
 fi
 

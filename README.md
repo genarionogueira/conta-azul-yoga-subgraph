@@ -5,12 +5,18 @@ GraphQL subgraph for Conta Azul entity sync (categories and related data).
 ## Local development
 
 ```bash
+cp config/local-env.example .env.local
+cp compose.override.local.example.yaml compose.override.local.yaml   # ZITADEL_PROJECT_ID, ngrok redirect
 make dev
 make test-unit
 make test-e2e
 ```
 
+Compose layers: `compose.yaml` (base) + `compose.dev.yaml` (config, Zitadel auth on) + `compose.override.local.yaml` (personal).
+
 Connect UI: http://localhost:4000/connect
+
+Unauthenticated GraphQL returns 401 locally (same as dev deploy). E2E tests use `compose.override.e2e.yaml` with `JWT_REQUIRED=false`.
 
 ## Credentials (Redis)
 
@@ -22,7 +28,7 @@ OAuth tokens are stored per tenant:
 | `conta_azul:connected_stores:{tenantId}` | ZSET index of connected store IDs |
 | `conta_azul:oauth:state:{state}` | OAuth state (includes `tenantId`) |
 
-When `JWT_REQUIRED=false` (local/E2E), the default tenant is `dev-tenant` (`DEFAULT_DEV_TENANT_ID`).
+When `JWT_REQUIRED=false` (E2E only), the default tenant is `dev-tenant` (`DEFAULT_DEV_TENANT_ID`).
 
 ### Migrating legacy keys (dev only)
 
@@ -41,7 +47,7 @@ REDIS_URL=redis://localhost:6379 DEFAULT_DEV_TENANT_ID=dev-tenant npx tsx script
 |----------|-------------|
 | `TENANT_ID_CLAIM` | Optional JWT claim for tenant ID (overrides Zitadel org claim) |
 | `ALLOW_SUB_AS_TENANT` | When `true`, use JWT `sub` as tenant when org claim is missing |
-| `DEFAULT_DEV_TENANT_ID` | Tenant used when JWT is not required (default: `dev-tenant`) |
+| `DEFAULT_DEV_TENANT_ID` | Tenant used when JWT is not required (default: `dev-tenant`, E2E only) |
 | `CREDENTIALS_EVENTS_ENABLED` | Set to `false` to disable Redis pub/sub credential events |
 
 ## Schema export

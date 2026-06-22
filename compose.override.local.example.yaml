@@ -1,0 +1,8 @@
+# Personal local overrides — copy to compose.override.local.yaml (gitignored).
+services:
+  yoga-subgraph:
+    environment:
+      # ngrok tunnel → yoga :4000/callback
+      CONTA_AZUL_REDIRECT_URI: https://<tunnel-host>/callback
+      # Must match web-dash ZITADEL_PROJECT_ID
+      ZITADEL_PROJECT_ID: <your-zitadel-project-id>

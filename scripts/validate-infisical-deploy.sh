@@ -67,7 +67,7 @@ done
 
 if [[ "$missing" -ne 0 ]]; then
   echo ""
-  echo "Upload from .env.infisical: make upload-secrets"
+  echo "Upload from .env.development: make upload-secrets"
   echo "  ${DOMAIN}/projects/secret-management/${INFISICAL_PROJECT_ID}/secrets/${INFISICAL_ENV}"
   exit 1
 fi

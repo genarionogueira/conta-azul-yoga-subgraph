@@ -1,0 +1,26 @@
+# Shared local dev config — mirrors config/deploy.yml env.clear + deploy.development.yml (Zitadel).
+# Secrets: .env.local via make dev (--env-file). Personal: compose.override.local.yaml
+services:
+  yoga-subgraph:
+    environment:
+      PORT: '4000'
+      NODE_ENV: development
+      DEFAULT_DEV_TENANT_ID: dev-tenant
+      CONTA_AZUL_API_BASE_URL: https://api-v2.contaazul.com
+      CONTA_AZUL_TOKEN_URL: https://auth.contaazul.com/oauth2/token
+      CONTA_AZUL_AUTH_URL: https://auth.contaazul.com/login
+      CONTA_AZUL_OAUTH_SCOPE: openid profile aws.cognito.signin.user.admin
+      CONTA_AZUL_REDIRECT_URI: http://localhost:3001/auth/conta-azul/callback
+      WEB_DASH_PUBLIC_URL: http://localhost:3001
+      SALES_SYNC_DAYS: '90'
+      JWT_ISSUER: avcd
+      JWT_AUDIENCE: conta-azul-service
+      JWT_REQUIRED: 'true'
+      KEYCLOAK_ENABLED: 'false'
+      ZITADEL_ISSUER: https://zitadel.avcd.ai
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,https://dev.avocado.tech
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/conta_azul}
+      CONTA_AZUL_CLIENT_ID: ${CONTA_AZUL_CLIENT_ID:-}
+      CONTA_AZUL_CLIENT_SECRET: ${CONTA_AZUL_CLIENT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-}

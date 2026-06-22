@@ -1,3 +1,4 @@
+# E2E deltas — merges on compose.yaml + compose.dev.yaml. JWT disabled for unauthenticated test clients.
 services:
   mock-conta-azul:
     image: wiremock/wiremock:3.9.1
@@ -24,23 +25,21 @@ services:
     ports: !override
       - '0:4000'
     depends_on:
-      redis:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
       mock-conta-azul:
         condition: service_healthy
     environment:
-      REDIS_URL: redis://redis:6379
       JWT_REQUIRED: 'false'
-      DEFAULT_DEV_TENANT_ID: dev-tenant
+      ZITADEL_PROJECT_ID: e2e-project-id
+      # Unset dev redirect so /callback renders the built-in success page (no web-dash on 3001)
+      WEB_DASH_PUBLIC_URL: ''
       CONTA_AZUL_API_BASE_URL: http://mock-conta-azul:8080
+      CONTA_AZUL_TOKEN_URL: http://mock-conta-azul:8080/oauth2/token
+      CONTA_AZUL_AUTH_URL: http://mock-conta-azul:8080/oauth2/authorize
+      CONTA_AZUL_REDIRECT_URI: http://yoga-subgraph:4000/callback
+      REDIS_URL: redis://redis:6379
+      MONGODB_URL: mongodb://mongo:27017/conta_azul
       CONTA_AZUL_CLIENT_ID: e2e-client-id
       CONTA_AZUL_CLIENT_SECRET: e2e-client-secret
-      CONTA_AZUL_TOKEN_URL: http://mock-conta-azul:8080/oauth2/token
-      CONTA_AZUL_REDIRECT_URI: http://yoga-subgraph:4000/callback
-      CONTA_AZUL_AUTH_URL: http://mock-conta-azul:8080/oauth2/authorize
-      MONGODB_URL: mongodb://mongo:27017/conta_azul
     healthcheck:
       interval: 5s
       timeout: 3s
