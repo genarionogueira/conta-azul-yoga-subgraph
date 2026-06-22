@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build .env.infisical from local .env + managed Valkey REDIS_URI (db index 2).
-# Does not commit secrets — output is gitignored (.env.infisical).
+# Build .env.development from local .env.local + managed Valkey REDIS_URI (db index 2).
+# Does not commit secrets — output is gitignored (.env.development).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-ENV_FILE="${ENV_FILE:-.env}"
-OUT_FILE="${OUT_FILE:-.env.infisical}"
+ENV_FILE="${ENV_FILE:-.env.local}"
+OUT_FILE="${OUT_FILE:-.env.development}"
 REDIS_DB_INDEX="${REDIS_DB_INDEX:-2}"
 INFISICAL_CREDENTIALS_FILE="${INFISICAL_CREDENTIALS_FILE:-../infisical/.env}"
 INFISICAL_API_URL="${INFISICAL_API_URL:-https://secrets.avcd.ai/api}"

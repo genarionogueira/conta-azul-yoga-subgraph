@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.env
-.env.infisical
-.env.infisical.pull
-.env.github
+
+# env files (secrets and local overrides — never commit)
+.env*
+config/github-env.local
+
+compose.override.local.yaml

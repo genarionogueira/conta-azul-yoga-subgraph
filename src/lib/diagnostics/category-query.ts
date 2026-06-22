@@ -1,7 +1,7 @@
 import type { Db } from 'mongodb'
 import type { BoolExp } from '../filter/types.js'
 import { MongoRepository } from '../mongo/repository.js'
-import type { TokenResolver } from '../token-resolver.js'
+import type { TenantTokenStore } from '../credentials/tenant-token-store.js'
 import { extractStoreIdsFromWhere } from './extract-store-ids.js'
 import {
   CategoryQueryDiagnosticCode,
@@ -12,7 +12,7 @@ function redisUnavailableDiagnostic(): CategoryQueryDiagnostic {
   return {
     code: CategoryQueryDiagnosticCode.REDIS_UNAVAILABLE,
     message: 'Cannot reach the OAuth token store (Redis).',
-    hint: 'Verify REDIS_URL points to the same Redis as conta-azul-service (e.g. redis://host.docker.internal:6379).',
+    hint: 'Verify REDIS_URL points to the yoga subgraph Redis instance.',
     storeId: null,
   }
 }
@@ -54,12 +54,13 @@ function dataNotSyncedDiagnostic(storeId: string): CategoryQueryDiagnostic {
 }
 
 async function diagnoseSingleStore(
+  tenantId: string,
   storeId: string,
-  tokenResolver: TokenResolver,
+  tokenStore: TenantTokenStore,
   repo: MongoRepository<{ storeId: string }>
 ): Promise<CategoryQueryDiagnostic | null> {
-  const token = await tokenResolver.getToken(storeId)
-  const registered = await tokenResolver.isStoreRegistered(storeId)
+  const token = await tokenStore.getToken(tenantId, storeId)
+  const registered = await tokenStore.isStoreRegistered(tenantId, storeId)
 
   if (!token) {
     if (registered) {
@@ -77,14 +78,15 @@ async function diagnoseSingleStore(
 }
 
 export async function diagnoseCategoryQuery(args: {
+  tenantId: string
   where?: BoolExp | null
-  tokenResolver: TokenResolver
+  tokenStore: TenantTokenStore
   db: Db
 }): Promise<CategoryQueryDiagnostic[]> {
-  const { where, tokenResolver, db } = args
+  const { tenantId, where, tokenStore, db } = args
 
   try {
-    await tokenResolver.ping()
+    await tokenStore.ping()
   } catch {
     return [redisUnavailableDiagnostic()]
   }
@@ -95,9 +97,7 @@ export async function diagnoseCategoryQuery(args: {
   const storeIds = extractStoreIdsFromWhere(where)
 
   if (storeIds.length === 0) {
-    const registered = await tokenResolver.listRegisteredStoreIds()
-    const withTokens = await tokenResolver.listConnectedStoreIds()
-    const candidates = [...new Set([...registered, ...withTokens])]
+    const candidates = await tokenStore.listRegisteredStoreIds(tenantId)
 
     if (candidates.length === 0) {
       return [noConnectedStoresDiagnostic()]
@@ -105,7 +105,7 @@ export async function diagnoseCategoryQuery(args: {
 
     const diagnostics: CategoryQueryDiagnostic[] = []
     for (const storeId of candidates) {
-      const diagnostic = await diagnoseSingleStore(storeId, tokenResolver, repo)
+      const diagnostic = await diagnoseSingleStore(tenantId, storeId, tokenStore, repo)
       if (diagnostic) diagnostics.push(diagnostic)
     }
     return diagnostics
@@ -113,7 +113,7 @@ export async function diagnoseCategoryQuery(args: {
 
   const diagnostics: CategoryQueryDiagnostic[] = []
   for (const storeId of storeIds) {
-    const diagnostic = await diagnoseSingleStore(storeId, tokenResolver, repo)
+    const diagnostic = await diagnoseSingleStore(tenantId, storeId, tokenStore, repo)
     if (diagnostic) diagnostics.push(diagnostic)
   }
   return diagnostics

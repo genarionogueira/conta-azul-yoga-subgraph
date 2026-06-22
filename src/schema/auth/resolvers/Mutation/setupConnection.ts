@@ -1,17 +1,20 @@
-import { completeConnect } from '../../../../lib/auth/connect-flow.js'
-import { authConfig, authTokenResolver, oauthStateStore } from '../../oauth-services.js'
-
-const connectDeps = {
-  authConfig,
-  oauthStateStore,
-  tokenResolver: authTokenResolver,
-}
+import type { AppContext } from '../../../../context.js'
+import { requireTenant } from '../../../../lib/auth/tenant-context.js'
+import { connectionService } from '../../oauth-services.js'
 
 export async function setupConnection(
   _parent: unknown,
-  args: { storeId: string; code: string; state: string }
+  args: { storeId: string; code: string; state: string },
+  context: AppContext
 ) {
-  const result = await completeConnect(args.storeId, args.code, args.state, connectDeps)
+  const tenantId = requireTenant(context)
+  const result = await connectionService.completeConnect(
+    tenantId,
+    args.storeId,
+    args.code,
+    args.state,
+    context.authClaims as Record<string, unknown> | undefined
+  )
   return {
     success: result.success,
     storeId: result.storeId,

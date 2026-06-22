@@ -1,12 +1,13 @@
 extend type Query {
   contaAzulAuthConfig: ContaAzulAuthConfig!
-  authorizationUrl(storeId: ID!): OAuthUrl!
+  authorizationUrl(storeId: ID!, returnUrl: String): OAuthUrl!
   connectionStatus(storeId: ID!): ConnectionStatus!
   connectedStores: [ConnectedStoreSummary!]!
 }
 
 extend type Mutation {
   setupConnection(storeId: ID!, code: String!, state: String!): SetupResult!
+  completeOAuthCallback(code: String!, state: String!): SetupResult!
   disconnectStore(storeId: ID!): DisconnectResult!
 }
 
@@ -32,11 +33,16 @@ type SetupResult {
 type ConnectionStatus {
   storeId: ID!
   isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
   error: String
 }
 
 type ConnectedStoreSummary {
   storeId: ID!
+  isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
 }
 
 type DisconnectResult {

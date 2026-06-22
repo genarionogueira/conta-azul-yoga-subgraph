@@ -14,8 +14,9 @@ describe('E2E: Health endpoint', () => {
 
   it('GivenRunningContainer_WhenGetHealth_ThenBodyHasStatusOk', async () => {
     const res = await fetch(`${getBaseUrl()}/health`)
-    const body = (await res.json()) as { status: string }
-    expect(body).toEqual({ status: 'ok' })
+    const body = (await res.json()) as { status: string; auth?: unknown }
+    expect(body.status).toBe('ok')
+    expect(body.auth).toBeDefined()
   })
 
   it('GivenRunningContainer_WhenGetHealth_ThenContentTypeIsJson', async () => {

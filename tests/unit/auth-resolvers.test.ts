@@ -1,28 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createTestContext, TEST_TENANT_ID } from '../helpers/test-context.js'
 
-const mockRedis = {
-  set: vi.fn(),
-  get: vi.fn(),
-  del: vi.fn(),
-}
+const mockStartConnect = vi.fn()
+const mockCompleteConnect = vi.fn()
+const mockGetStatus = vi.fn()
+const mockListConnected = vi.fn()
+const mockDisconnect = vi.fn()
 
-const mockSaveToken = vi.fn()
-const mockGetToken = vi.fn()
-const mockDeleteToken = vi.fn()
-const mockListConnectedStoreIds = vi.fn()
-
-vi.mock('ioredis', () => ({
-  Redis: vi.fn(() => mockRedis),
-}))
-
-vi.mock('../../src/lib/token-resolver.js', () => ({
-  TokenResolver: vi.fn(() => ({
-    saveToken: mockSaveToken,
-    getToken: mockGetToken,
-    deleteToken: mockDeleteToken,
-    listConnectedStoreIds: mockListConnectedStoreIds,
-  })),
-}))
+vi.mock('../../src/schema/auth/oauth-services.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/schema/auth/oauth-services.js')>()
+  return {
+    ...actual,
+    connectionService: {
+      startConnect: (...args: unknown[]) => mockStartConnect(...args),
+      completeConnect: (...args: unknown[]) => mockCompleteConnect(...args),
+      getStatus: (...args: unknown[]) => mockGetStatus(...args),
+      listConnected: (...args: unknown[]) => mockListConnected(...args),
+      disconnect: (...args: unknown[]) => mockDisconnect(...args),
+    },
+  }
+})
 
 const { contaAzulAuthConfig } = await import(
   '../../src/schema/auth/resolvers/Query/contaAzulAuthConfig.js'
@@ -45,6 +42,7 @@ const { disconnectStore } = await import(
 
 describe('auth resolvers', () => {
   const env = process.env
+  const context = createTestContext()
 
   beforeEach(() => {
     process.env = {
@@ -55,13 +53,11 @@ describe('auth resolvers', () => {
       CONTA_AZUL_AUTH_URL: 'https://auth.example.com/login',
       CONTA_AZUL_TOKEN_URL: 'https://auth.example.com/oauth2/token',
     }
-    mockRedis.set.mockReset()
-    mockRedis.get.mockReset()
-    mockRedis.del.mockReset()
-    mockSaveToken.mockReset()
-    mockGetToken.mockReset()
-    mockDeleteToken.mockReset()
-    mockListConnectedStoreIds.mockReset()
+    mockStartConnect.mockReset()
+    mockCompleteConnect.mockReset()
+    mockGetStatus.mockReset()
+    mockListConnected.mockReset()
+    mockDisconnect.mockReset()
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -72,7 +68,7 @@ describe('auth resolvers', () => {
   })
 
   it('GivenConfiguredEnv_WhenContaAzulAuthConfig_ThenReturnsSnapshot', async () => {
-    const result = await contaAzulAuthConfig({}, {}, {} as never, {} as never)
+    const result = await contaAzulAuthConfig({}, {}, context, {} as never)
 
     expect(result).toEqual({
       redirectUri: 'http://localhost:4000/callback',
@@ -83,44 +79,33 @@ describe('auth resolvers', () => {
   })
 
   it('GivenStoreId_WhenAuthorizationUrl_ThenReturnsUrlWithState', async () => {
-    mockRedis.set.mockResolvedValue('OK')
+    mockStartConnect.mockResolvedValue({
+      storeId: 'store-1',
+      state: 'state-abc',
+      url: 'https://auth.example.com/authorize?state=state-abc',
+    })
 
-    const result = await authorizationUrl(
-      {},
-      { storeId: 'store-1' },
-      {} as never,
-      {} as never
-    )
+    const result = await authorizationUrl({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result.storeId).toBe('store-1')
-    expect(result.state).toMatch(/^[a-f0-9]{64}$/)
-    expect(result.url).toContain('client_id=test-client-id')
-    expect(result.url).toContain('redirect_uri=')
-    expect(mockRedis.set).toHaveBeenCalledOnce()
+    expect(result.state).toBe('state-abc')
+    expect(mockStartConnect).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1', undefined)
   })
 
   it('GivenMissingClientId_WhenAuthorizationUrl_ThenThrowsAuthConfigError', async () => {
     delete process.env.CONTA_AZUL_CLIENT_ID
+    mockStartConnect.mockRejectedValue(new Error('CONTA_AZUL_CLIENT_ID is not configured'))
 
     await expect(
-      authorizationUrl({}, { storeId: 'store-1' }, {} as never, {} as never)
+      authorizationUrl({}, { storeId: 'store-1' }, context, {} as never)
     ).rejects.toThrow('CONTA_AZUL_CLIENT_ID is not configured')
   })
 
   it('GivenValidStateAndCode_WhenSetupConnection_ThenSavesTokenAndSucceeds', async () => {
-    mockRedis.get.mockResolvedValue('store-1')
-    mockRedis.del.mockResolvedValue(1)
-    mockSaveToken.mockResolvedValue(undefined)
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: 'access',
-          refresh_token: 'refresh',
-          expires_in: 3600,
-        }),
-        { status: 200 }
-      )
-    )
+    mockCompleteConnect.mockResolvedValue({
+      success: true,
+      storeId: 'store-1',
+    })
 
     const result = await setupConnection(
       {},
@@ -129,7 +114,7 @@ describe('auth resolvers', () => {
         code: 'auth-code',
         state: 'valid-state',
       },
-      {} as never,
+      context,
       {} as never
     )
 
@@ -138,14 +123,21 @@ describe('auth resolvers', () => {
       storeId: 'store-1',
       error: null,
     })
-    expect(mockSaveToken).toHaveBeenCalledWith(
+    expect(mockCompleteConnect).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
       'store-1',
-      expect.objectContaining({ access_token: 'access' })
+      'auth-code',
+      'valid-state',
+      undefined
     )
   })
 
   it('GivenMismatchedStateStoreId_WhenSetupConnection_ThenReturnsError', async () => {
-    mockRedis.get.mockResolvedValue('other-store')
+    mockCompleteConnect.mockResolvedValue({
+      success: false,
+      storeId: 'store-1',
+      error: 'Invalid or expired OAuth state',
+    })
 
     const result = await setupConnection(
       {},
@@ -154,17 +146,20 @@ describe('auth resolvers', () => {
         code: 'auth-code',
         state: 'valid-state',
       },
-      {} as never,
+      context,
       {} as never
     )
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Invalid or expired OAuth state')
-    expect(mockSaveToken).not.toHaveBeenCalled()
   })
 
   it('GivenMissingState_WhenSetupConnection_ThenReturnsError', async () => {
-    mockRedis.get.mockResolvedValue(null)
+    mockCompleteConnect.mockResolvedValue({
+      success: false,
+      storeId: 'store-1',
+      error: 'Invalid or expired OAuth state',
+    })
 
     const result = await setupConnection(
       {},
@@ -173,7 +168,7 @@ describe('auth resolvers', () => {
         code: 'auth-code',
         state: 'expired-state',
       },
-      {} as never,
+      context,
       {} as never
     )
 
@@ -182,9 +177,11 @@ describe('auth resolvers', () => {
   })
 
   it('GivenTokenExchangeFailure_WhenSetupConnection_ThenReturnsErrorMessage', async () => {
-    mockRedis.get.mockResolvedValue('store-1')
-    mockRedis.del.mockResolvedValue(1)
-    vi.mocked(fetch).mockResolvedValue(new Response('error', { status: 401 }))
+    mockCompleteConnect.mockResolvedValue({
+      success: false,
+      storeId: 'store-1',
+      error: 'Authorization code exchange failed: 401',
+    })
 
     const result = await setupConnection(
       {},
@@ -193,7 +190,7 @@ describe('auth resolvers', () => {
         code: 'bad-code',
         state: 'valid-state',
       },
-      {} as never,
+      context,
       {} as never
     )
 
@@ -202,41 +199,61 @@ describe('auth resolvers', () => {
   })
 
   it('GivenTokenInRedis_WhenConnectionStatus_ThenIsConnectedTrue', async () => {
-    mockGetToken.mockResolvedValue({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expires_at: Date.now() + 3_600_000,
+    mockGetStatus.mockResolvedValue({
+      storeId: 'store-1',
+      isConnected: true,
+      connectedAt: '2026-06-21T00:00:00.000Z',
+      expiresAt: '2026-06-22T00:00:00.000Z',
+      error: null,
     })
 
-    const result = await connectionStatus({}, { storeId: 'store-1' }, {} as never, {} as never)
+    const result = await connectionStatus({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result).toEqual({
       storeId: 'store-1',
       isConnected: true,
+      connectedAt: '2026-06-21T00:00:00.000Z',
+      expiresAt: '2026-06-22T00:00:00.000Z',
       error: null,
     })
   })
 
   it('GivenNoToken_WhenConnectionStatus_ThenIsConnectedFalse', async () => {
-    mockGetToken.mockResolvedValue(null)
+    mockGetStatus.mockResolvedValue({
+      storeId: 'store-1',
+      isConnected: false,
+      connectedAt: null,
+      expiresAt: null,
+      error: null,
+    })
 
-    const result = await connectionStatus({}, { storeId: 'store-1' }, {} as never, {} as never)
+    const result = await connectionStatus({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result.isConnected).toBe(false)
   })
 
   it('GivenConnectedStores_WhenQuery_ThenListsStoreIds', async () => {
-    mockListConnectedStoreIds.mockResolvedValue(['store-a', 'store-b'])
+    mockListConnected.mockResolvedValue([
+      { storeId: 'store-a', isConnected: true, connectedAt: null, expiresAt: null },
+      { storeId: 'store-b', isConnected: true, connectedAt: null, expiresAt: null },
+    ])
 
-    const result = await connectedStores({}, {}, {} as never, {} as never)
+    const result = await connectedStores({}, {}, context, {} as never)
 
-    expect(result).toEqual([{ storeId: 'store-a' }, { storeId: 'store-b' }])
+    expect(result).toEqual([
+      { storeId: 'store-a', isConnected: true, connectedAt: null, expiresAt: null },
+      { storeId: 'store-b', isConnected: true, connectedAt: null, expiresAt: null },
+    ])
   })
 
   it('GivenExistingToken_WhenDisconnectStore_ThenSuccessTrue', async () => {
-    mockDeleteToken.mockResolvedValue(true)
+    mockDisconnect.mockResolvedValue({
+      success: true,
+      storeId: 'store-1',
+      error: null,
+    })
 
-    const result = await disconnectStore({}, { storeId: 'store-1' }, {} as never, {} as never)
+    const result = await disconnectStore({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result).toEqual({
       success: true,
@@ -246,9 +263,13 @@ describe('auth resolvers', () => {
   })
 
   it('GivenNoToken_WhenDisconnectStore_ThenSuccessFalse', async () => {
-    mockDeleteToken.mockResolvedValue(false)
+    mockDisconnect.mockResolvedValue({
+      success: false,
+      storeId: 'store-1',
+      error: 'Store store-1 is not connected',
+    })
 
-    const result = await disconnectStore({}, { storeId: 'store-1' }, {} as never, {} as never)
+    const result = await disconnectStore({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not connected')

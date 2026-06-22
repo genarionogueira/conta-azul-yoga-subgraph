@@ -2,12 +2,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { JWTPayload } from 'jose'
 import { AuthConfigError } from '../lib/auth-config.js'
-import {
-  completeConnectFromCallback,
-  startConnect,
-  type ConnectFlowDeps,
-} from '../lib/auth/connect-flow.js'
+import { resolveTenantId } from '../lib/auth/tenant-context.js'
+import type { ConnectionService } from '../lib/credentials/connection-service.js'
+import { buildPostConnectRedirect } from '../lib/oauth-return-url.js'
+import type { AuthConfig } from '../lib/auth-config.js'
 
 const templatesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 
@@ -18,6 +18,11 @@ function loadTemplate(name: string): string {
 function sendHtml(res: ServerResponse, status: number, body: string): void {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' })
   res.end(body)
+}
+
+function sendRedirect(res: ServerResponse, location: string): void {
+  res.writeHead(302, { Location: location })
+  res.end()
 }
 
 function renderConnectPage(storeId: string): string {
@@ -52,7 +57,13 @@ function renderErrorPage(error: string): string {
 }
 
 export interface ConnectRoutesDeps {
-  connectFlow: ConnectFlowDeps
+  connectionService: ConnectionService
+  authConfig: AuthConfig
+  jwtRequired: boolean
+  authenticateIncomingRequest: (
+    req: IncomingMessage,
+    res: ServerResponse
+  ) => Promise<JWTPayload | undefined>
 }
 
 export async function handleConnectRequest(
@@ -78,8 +89,20 @@ export async function handleConnectRequest(
       sendHtml(res, 400, renderErrorPage('store_id query parameter is required'))
       return true
     }
+
+    let tenantId: string
+    if (deps.jwtRequired) {
+      const authClaims = await deps.authenticateIncomingRequest(req, res)
+      if (!authClaims) {
+        return true
+      }
+      tenantId = resolveTenantId(authClaims, true)
+    } else {
+      tenantId = resolveTenantId(undefined, false)
+    }
+
     try {
-      const { url } = await startConnect(storeId, deps.connectFlow)
+      const { url } = await deps.connectionService.startConnect(tenantId, storeId)
       res.writeHead(302, { Location: url })
       res.end()
     } catch (err) {
@@ -108,9 +131,15 @@ export async function handleConnectRequest(
       return true
     }
 
-    const result = await completeConnectFromCallback(code, state, deps.connectFlow)
+    const result = await deps.connectionService.completeConnectFromCallback(code, state)
     if (!result.success) {
       sendHtml(res, 200, renderErrorPage(result.error))
+      return true
+    }
+
+    const redirectTarget = buildPostConnectRedirect(result.storeId, result.returnUrl)
+    if (redirectTarget) {
+      sendRedirect(res, redirectTarget)
       return true
     }
 

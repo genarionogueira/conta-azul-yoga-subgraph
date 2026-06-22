@@ -1,11 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { Redis } from 'ioredis'
 import { gqlRaw } from './helpers/gql-client.js'
+import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
 
 const TEST_TOKEN = {
   access_token: 'test-access-token',
   refresh_token: 'test-refresh-token',
   expires_at: Date.now() + 3_600_000,
+  connected_at: Date.now(),
+}
+
+const CONNECTED_STORES_KEY = `conta_azul:connected_stores:${DEFAULT_DEV_TENANT_ID}`
+
+function tokenKey(storeId: string): string {
+  return `conta_azul:token:${DEFAULT_DEV_TENANT_ID}:${storeId}`
 }
 
 function getRedisUrl(): string {
@@ -31,8 +39,8 @@ const QUERY_WITH_DIAGNOSTICS = `
 describe('E2E: contaAzulCategories diagnostics', () => {
   it('GivenTokenMissingForRegisteredStore_WhenQuerying_ThenReturnsTokenMissingDiagnostic', async () => {
     const redis = new Redis(getRedisUrl())
-    await redis.zadd('conta_azul:connected_stores', Date.now(), 'butanta')
-    await redis.del('conta_azul:token:butanta')
+    await redis.zadd(CONNECTED_STORES_KEY, Date.now(), 'butanta')
+    await redis.del(tokenKey('butanta'))
     await redis.quit()
 
     const res = await gqlRaw(QUERY_WITH_DIAGNOSTICS, {
@@ -57,8 +65,8 @@ describe('E2E: contaAzulCategories diagnostics', () => {
   it('GivenTokenWithoutPriorSync_WhenQuerying_ThenAutoRefreshesAndReturnsData', async () => {
     const redis = new Redis(getRedisUrl())
     const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
-    await redis.set('conta_azul:token:unsynced-store', tokenValue)
-    await redis.zadd('conta_azul:connected_stores', Date.now(), 'unsynced-store')
+    await redis.set(tokenKey('unsynced-store'), tokenValue)
+    await redis.zadd(CONNECTED_STORES_KEY, TEST_TOKEN.connected_at, 'unsynced-store')
     await redis.quit()
 
     const res = await gqlRaw(QUERY_WITH_DIAGNOSTICS, {

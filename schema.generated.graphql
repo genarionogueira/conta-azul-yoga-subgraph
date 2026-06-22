@@ -22,7 +22,7 @@ type Query {
   _entities(representations: [_Any!]!): [_Entity]!
   _service: _Service!
   contaAzulAuthConfig: ContaAzulAuthConfig!
-  authorizationUrl(storeId: ID!): OAuthUrl!
+  authorizationUrl(storeId: ID!, returnUrl: String): OAuthUrl!
   connectionStatus(storeId: ID!): ConnectionStatus!
   connectedStores: [ConnectedStoreSummary!]!
   hello: String!
@@ -58,11 +58,16 @@ type SetupResult {
 type ConnectionStatus {
   storeId: ID!
   isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
   error: String
 }
 
 type ConnectedStoreSummary {
   storeId: ID!
+  isConnected: Boolean!
+  connectedAt: String
+  expiresAt: String
 }
 
 type DisconnectResult {

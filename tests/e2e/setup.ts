@@ -2,6 +2,7 @@ import { DockerComposeEnvironment, Wait } from 'testcontainers'
 import { Redis } from 'ioredis'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -11,6 +12,7 @@ const TEST_TOKEN = {
   access_token: 'test-access-token',
   refresh_token: 'test-refresh-token',
   expires_at: Date.now() + 3_600_000,
+  connected_at: Date.now(),
 }
 
 async function seedCategoriesViaSync(baseUrl: string): Promise<void> {
@@ -39,15 +41,43 @@ async function seedCategoriesViaSync(baseUrl: string): Promise<void> {
     if (result && result.status === 'success' && result.syncedCount > 0) {
       return
     }
+    if (attempt === 29) {
+      throw new Error(
+        `E2E setup sync failed after retries: ${JSON.stringify(body.data?.syncContaAzulCategories ?? body.errors)}`
+      )
+    }
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
-  throw new Error('E2E setup: failed to seed categories into MongoDB via syncContaAzulCategories')
+}
+
+async function seedTenantConnection(
+  redis: Redis,
+  tenantId: string,
+  storeId: string
+): Promise<void> {
+  const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
+  const tokenKey = `conta_azul:token:${tenantId}:${storeId}`
+  const indexKey = `conta_azul:connected_stores:${tenantId}`
+  const ttlSeconds = Math.max(
+    Math.ceil((TEST_TOKEN.expires_at - Date.now() + 86_400_000) / 1000),
+    60
+  )
+  await redis.setex(tokenKey, ttlSeconds, tokenValue)
+  await redis.zadd(indexKey, TEST_TOKEN.connected_at, storeId)
+}
+
+export async function reseedDefaultE2eConnections(redisUrl: string): Promise<void> {
+  const redis = new Redis(redisUrl)
+  await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-1')
+  await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-2')
+  await redis.quit()
 }
 
 export async function setup(): Promise<void> {
   compose = await new DockerComposeEnvironment(ROOT, [
-    'docker-compose.yml',
-    'docker-compose.e2e.yml',
+    'compose.yaml',
+    'compose.dev.yaml',
+    'compose.override.e2e.yaml',
   ])
     .withWaitStrategy('redis', Wait.forHealthCheck())
     .withWaitStrategy('mongo', Wait.forHealthCheck())
@@ -74,9 +104,8 @@ export async function setup(): Promise<void> {
   process.env.E2E_WIREMOCK_ADMIN_URL = `http://localhost:${wiremockPort}`
 
   const redis = new Redis(redisUrl)
-  const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
-  await redis.set('conta_azul:token:store-1', tokenValue)
-  await redis.set('conta_azul:token:store-2', tokenValue)
+  await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-1')
+  await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-2')
   await redis.quit()
 
   await seedCategoriesViaSync(baseUrl)

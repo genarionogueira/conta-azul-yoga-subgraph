@@ -3,8 +3,11 @@ export interface RestAdapterClient {
 }
 
 export interface RestAdapter {
-  listConnectedStoreIds(): Promise<string[]>
-  getClientForStore(storeId: string): Promise<RestAdapterClient | undefined>
+  listConnectedStoreIds(tenantId: string): Promise<string[]>
+  getClientForStore(
+    tenantId: string,
+    storeId: string
+  ): Promise<RestAdapterClient | undefined>
 }
 
 const adapters = new Map<string, RestAdapter>()

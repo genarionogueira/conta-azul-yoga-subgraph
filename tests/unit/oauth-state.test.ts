@@ -1,51 +1,64 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OAuthStateStore } from '../../src/lib/oauth-state.js'
+import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
-function createMockRedis() {
-  return {
+describe('OAuthStateStore', () => {
+  const redis = {
     set: vi.fn(),
     get: vi.fn(),
     del: vi.fn(),
   }
-}
-
-describe('OAuthStateStore', () => {
-  let redis: ReturnType<typeof createMockRedis>
-  let store: OAuthStateStore
 
   beforeEach(() => {
-    redis = createMockRedis()
-    store = new OAuthStateStore(redis as unknown as import('ioredis').Redis)
+    redis.set.mockReset()
+    redis.get.mockReset()
+    redis.del.mockReset()
   })
 
-  it('GivenStoreId_WhenCreateState_ThenStoresWithTtlAndReturnsHexState', async () => {
-    const state = await store.createState('store-1')
+  it('GivenReturnUrl_WhenCreateState_ThenStoresJsonPayload', async () => {
+    const store = new OAuthStateStore(redis as never)
+    redis.set.mockResolvedValue('OK')
+
+    const state = await store.createState(
+      TEST_TENANT_ID,
+      'store-1',
+      'https://dev.avocado.tech/'
+    )
 
     expect(state).toMatch(/^[a-f0-9]{64}$/)
     expect(redis.set).toHaveBeenCalledWith(
       `conta_azul:oauth:state:${state}`,
-      'store-1',
+      JSON.stringify({
+        tenantId: TEST_TENANT_ID,
+        storeId: 'store-1',
+        returnUrl: 'https://dev.avocado.tech/',
+      }),
       'EX',
       600
     )
   })
 
-  it('GivenExistingState_WhenConsumeState_ThenReturnsStoreIdAndDeletesKey', async () => {
-    redis.get.mockResolvedValue('store-42')
+  it('GivenLegacyPlainValue_WhenConsumeState_ThenReturnsNull', async () => {
+    const store = new OAuthStateStore(redis as never)
+    redis.get.mockResolvedValue('store-legacy')
+    redis.del.mockResolvedValue(1)
 
-    const storeId = await store.consumeState('abc123')
-
-    expect(storeId).toBe('store-42')
-    expect(redis.get).toHaveBeenCalledWith('conta_azul:oauth:state:abc123')
-    expect(redis.del).toHaveBeenCalledWith('conta_azul:oauth:state:abc123')
+    await expect(store.consumeState('state-1')).resolves.toBeNull()
   })
 
-  it('GivenMissingState_WhenConsumeState_ThenReturnsNullWithoutDelete', async () => {
-    redis.get.mockResolvedValue(null)
+  it('GivenValidJsonPayload_WhenConsumeState_ThenReturnsPayload', async () => {
+    const store = new OAuthStateStore(redis as never)
+    redis.get.mockResolvedValue(
+      JSON.stringify({
+        tenantId: TEST_TENANT_ID,
+        storeId: 'store-1',
+      })
+    )
+    redis.del.mockResolvedValue(1)
 
-    const storeId = await store.consumeState('missing')
-
-    expect(storeId).toBeNull()
-    expect(redis.del).not.toHaveBeenCalled()
+    await expect(store.consumeState('state-1')).resolves.toEqual({
+      tenantId: TEST_TENANT_ID,
+      storeId: 'store-1',
+    })
   })
 })

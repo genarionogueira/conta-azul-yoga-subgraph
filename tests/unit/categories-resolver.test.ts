@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { makeConnectionResolver } from '../../src/lib/entity/resolvers.js'
 import type { EntityDef } from '../../src/lib/entity/types.js'
+import { createTestContext } from '../helpers/test-context.js'
 
 const categoryEntity: EntityDef = {
   name: 'ContaAzulCategory',
@@ -53,6 +54,7 @@ vi.mock('../../src/lib/cache/index.js', () => ({
 }))
 
 vi.mock('../../src/context.js', () => ({
+  getTokenStore: vi.fn(() => ({})),
   getTokenResolver: vi.fn(() => ({})),
   listConnectedStoreIds: vi.fn().mockResolvedValue(['store-1']),
 }))
@@ -127,7 +129,8 @@ describe('contaAzulCategories resolver (entity factory)', () => {
 
     const result = await contaAzulCategories(
       {},
-      { where: { storeId: { _eq: 'butanta' } } }
+      { where: { storeId: { _eq: 'butanta' } } },
+      createTestContext()
     )
 
     expect(diagnoseEntityQuery).toHaveBeenCalled()
@@ -158,7 +161,7 @@ describe('contaAzulCategories resolver (entity factory)', () => {
     await contaAzulCategoriesCached(
       {},
       { where: { storeId: { _eq: 'store-1' } } },
-      { storeId: 'store-1', contaAzulClient: undefined }
+      createTestContext({ storeId: 'store-1' })
     )
 
     expect(ensureFreshCache).toHaveBeenCalled()
