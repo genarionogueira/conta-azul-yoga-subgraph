@@ -1,0 +1,14 @@
+# Local dev secrets — copy to .env.local (gitignored).
+#
+#   cp config/local-env.example .env.local
+#   cp compose.override.local.example.yaml compose.override.local.yaml
+#
+# Infisical deploy sync: make bootstrap-deploy-secrets → .env.development
+
+CONTA_AZUL_CLIENT_ID=
+CONTA_AZUL_CLIENT_SECRET=
+
+# Optional — omit to use compose Redis/Mongo services
+# REDIS_URL=
+# MONGODB_URL=
+# JWT_SECRET=

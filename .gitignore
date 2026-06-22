@@ -1,6 +1,8 @@
 node_modules/
 dist/
-.env.example
-.env.local
-.env.development
+
+# env files (secrets and local overrides — never commit)
+.env*
+config/github-env.local
+
 compose.override.local.yaml

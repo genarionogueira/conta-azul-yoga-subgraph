@@ -77,22 +77,13 @@ gh workflow run pulumi-keycloak-config.yml \
 
 ### 5. GitHub `development` environment
 
-Export CI vars, then:
-
 ```bash
-export GITHUB_REPO=Avocado-Technology/conta-azul-yoga-subgraph
-export INFISICAL_PROJECT_ID=...
-export INFISICAL_OIDC_IDENTITY_ID=...
-export INFISICAL_INFRA_PROJECT_ID=...
-export INFISICAL_API_URL=https://secrets.avcd.ai/api
-export INFISICAL_OIDC_AUDIENCE=https://secrets.avcd.ai
-export DO_DEPLOY_HOST=...
-export DO_DEPLOY_USER=deploy
-export DO_PUBLIC_HOST=dev.avocado.tech
-export PUBLIC_HOST=dev.avocado.tech
-export GHCR_REGISTRY_URL=ghcr.io
+cp config/github-env.example config/github-env.local
+# Edit INFISICAL_OIDC_IDENTITY_ID, DO_DEPLOY_HOST, etc.
 make set-github-env
 ```
+
+Or export CI vars manually, then `make set-github-env`.
 
 Required **vars**: `INFISICAL_*`, `DO_DEPLOY_HOST`, `DO_PUBLIC_HOST`
 

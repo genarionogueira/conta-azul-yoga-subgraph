@@ -44,10 +44,10 @@ help:
 	@echo "  make upload-secrets         Upload $(INFISICAL_PUSH_FILE) → Infisical ($(INFISICAL_ENV))"
 	@echo "  make validate-secrets       Verify required secrets exist in Infisical"
 	@echo "  make bootstrap-deploy-secrets Build $(INFISICAL_PUSH_FILE) from .env.local + managed Valkey (db 2)"
-	@echo "  make set-github-env         Push GitHub development env vars (export vars first)"
+	@echo "  make set-github-env         Push config/github-env.local vars to GitHub development environment"
 
 dev:
-	@test -f $(COMPOSE_ENV_FILE) || (echo "❌ Copy .env.example → $(COMPOSE_ENV_FILE) and fill values" && exit 1)
+	@test -f $(COMPOSE_ENV_FILE) || (echo "❌ Copy config/local-env.example → $(COMPOSE_ENV_FILE) and fill values" && exit 1)
 	@test -f compose.override.local.yaml || (echo "❌ Copy compose.override.local.example.yaml → compose.override.local.yaml" && exit 1)
 	@set -a; . ./$(COMPOSE_ENV_FILE); set +a; \
 	  test -n "$$CONTA_AZUL_CLIENT_ID" && test -n "$$CONTA_AZUL_CLIENT_SECRET" || \
@@ -61,7 +61,7 @@ logs:
 	@$(COMPOSE) --env-file $(COMPOSE_ENV_FILE) $(COMPOSE_LOCAL) logs -f yoga-subgraph 2>/dev/null || $(COMPOSE) logs -f yoga-subgraph
 
 compose-config:
-	@test -f $(COMPOSE_ENV_FILE) || (echo "❌ Copy .env.example → $(COMPOSE_ENV_FILE) and fill values" && exit 1)
+	@test -f $(COMPOSE_ENV_FILE) || (echo "❌ Copy config/local-env.example → $(COMPOSE_ENV_FILE) and fill values" && exit 1)
 	@test -f compose.override.local.yaml || (echo "❌ Copy compose.override.local.example.yaml → compose.override.local.yaml" && exit 1)
 	@$(COMPOSE) --env-file $(COMPOSE_ENV_FILE) $(COMPOSE_LOCAL) config
 
@@ -135,4 +135,5 @@ bootstrap-deploy-secrets: infisical-check
 
 set-github-env:
 	@chmod +x scripts/set-github-env.sh
-	@./scripts/set-github-env.sh development
+	@test -f config/github-env.local || (echo "❌ cp config/github-env.example → config/github-env.local and fill values" && exit 1)
+	@set -a; . ./config/github-env.local; set +a; ./scripts/set-github-env.sh development

@@ -5,7 +5,7 @@ GraphQL subgraph for Conta Azul entity sync (categories and related data).
 ## Local development
 
 ```bash
-cp .env.example .env.local
+cp config/local-env.example .env.local
 cp compose.override.local.example.yaml compose.override.local.yaml   # ZITADEL_PROJECT_ID, ngrok redirect
 make dev
 make test-unit

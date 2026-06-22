@@ -26,7 +26,7 @@ command -v infisical >/dev/null 2>&1 || {
 
 if [[ ! -f "$INFISICAL_PUSH_FILE" ]]; then
   echo "❌ Push source not found: $INFISICAL_PUSH_FILE" >&2
-  echo "   Copy .env.example → .env.development and add secrets." >&2
+  echo "   Copy config/local-env.example → .env.development and add secrets." >&2
   exit 1
 fi
 
