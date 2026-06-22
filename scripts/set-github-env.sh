@@ -1,18 +1,11 @@
 #!/usr/bin/env bash
-# Set GitHub Actions environment variables for Kamal deploy (replaces pulumi-infra github stack).
-# Usage: source .env.github && ./scripts/set-github-env.sh development
+# Set GitHub Actions environment variables for Kamal deploy.
+# Usage: export INFISICAL_PROJECT_ID=... DO_DEPLOY_HOST=... && ./scripts/set-github-env.sh development
 set -euo pipefail
 
 ENV_NAME="${1:-development}"
 REPO="${GITHUB_REPO:-Avocado-Technology/conta-azul-yoga-subgraph}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-if [[ -f "${ROOT}/.env.github" ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source "${ROOT}/.env.github"
-  set +a
-fi
 
 VARS=(
   INFISICAL_PROJECT_ID

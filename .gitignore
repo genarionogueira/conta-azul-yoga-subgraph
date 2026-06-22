@@ -1,6 +1,6 @@
 node_modules/
 dist/
-.env
-.env.infisical
-.env.infisical.pull
-.env.github
+.env.example
+.env.local
+.env.development
+compose.override.local.yaml

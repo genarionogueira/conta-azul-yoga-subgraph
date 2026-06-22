@@ -55,8 +55,8 @@ Allowlisted keys (`config/infisical-secret-keys.list`):
 
 ```bash
 cd conta-azul-yoga-subgraph
-# .env must include MONGODB_URL, CONTA_AZUL_CLIENT_ID, CONTA_AZUL_CLIENT_SECRET
-make bootstrap-deploy-secrets
+# .env.local must include CONTA_AZUL_CLIENT_ID/SECRET; optional MONGODB_URL override
+make bootstrap-deploy-secrets   # writes .env.development
 make upload-secrets
 make validate-secrets
 ```
@@ -77,10 +77,20 @@ gh workflow run pulumi-keycloak-config.yml \
 
 ### 5. GitHub `development` environment
 
-Copy `.env.github.example` → `.env.github`, fill values, then:
+Export CI vars, then:
 
 ```bash
-source .env.github
+export GITHUB_REPO=Avocado-Technology/conta-azul-yoga-subgraph
+export INFISICAL_PROJECT_ID=...
+export INFISICAL_OIDC_IDENTITY_ID=...
+export INFISICAL_INFRA_PROJECT_ID=...
+export INFISICAL_API_URL=https://secrets.avcd.ai/api
+export INFISICAL_OIDC_AUDIENCE=https://secrets.avcd.ai
+export DO_DEPLOY_HOST=...
+export DO_DEPLOY_USER=deploy
+export DO_PUBLIC_HOST=dev.avocado.tech
+export PUBLIC_HOST=dev.avocado.tech
+export GHCR_REGISTRY_URL=ghcr.io
 make set-github-env
 ```
 
@@ -136,14 +146,13 @@ curl -sf -X POST https://dev.avocado.tech/conta-azul-yoga-subgraph/graphql \
   -d '{"query":"{ hello }"}'
 ```
 
-## Local dev with Zitadel JWT auth
-
-Exercise the same auth path as prod without disabling `JWT_REQUIRED`:
+## Local dev (Zitadel auth always on)
 
 ```bash
-cp .env.auth.example .env
-# ZITADEL_PROJECT_ID must match web-dash ZITADEL_PROJECT_ID (avcd-web-dash project)
-docker compose -f docker-compose.yml -f docker-compose.auth.yml up --build
+cp .env.example .env.local
+cp compose.override.local.example.yaml compose.override.local.yaml
+# Set ZITADEL_PROJECT_ID in compose.override.local.yaml (must match web-dash)
+make dev
 ```
 
 Verify:

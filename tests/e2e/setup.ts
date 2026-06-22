@@ -75,8 +75,9 @@ export async function reseedDefaultE2eConnections(redisUrl: string): Promise<voi
 
 export async function setup(): Promise<void> {
   compose = await new DockerComposeEnvironment(ROOT, [
-    'docker-compose.yml',
-    'docker-compose.e2e.yml',
+    'compose.yaml',
+    'compose.dev.yaml',
+    'compose.override.e2e.yaml',
   ])
     .withWaitStrategy('redis', Wait.forHealthCheck())
     .withWaitStrategy('mongo', Wait.forHealthCheck())
