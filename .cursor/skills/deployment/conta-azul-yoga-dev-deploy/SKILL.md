@@ -5,7 +5,7 @@ description: Bootstrap Infisical secrets, GitHub environment, and CI deploy for 
 
 # Conta Azul Yoga Subgraph — Dev Deploy
 
-> **Related**: [avcd-api-gateway README](../../../../avcd-api-gateway/README.md) | monorepo `ci-cd-only-deploy` rule | [conta-azul-dev-deploy](../../../../conta-azul-service/.cursor/skills/deployment/conta-azul-dev-deploy/SKILL.md)
+> **Related**: [avcd-api-gateway README](../../../../avcd-api-gateway/README.md) | monorepo `ci-cd-only-deploy` rule
 
 ## Overview
 
@@ -61,7 +61,7 @@ make upload-secrets
 make validate-secrets
 ```
 
-**Redis note:** Yoga uses `plain:{json}` tokens; conta-azul-service uses Fernet. Use db index `2` and re-OAuth stores via `setupConnection` after cutover.
+**Redis note:** Yoga uses `plain:{json}` tokens. Use db index `2` and re-OAuth stores via `setupConnection` after cutover.
 
 ### 4. Keycloak audience
 
