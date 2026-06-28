@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis'
+import { createRedisClient } from '../redis/create-redis-client.js'
 import { AuthConfig } from '../auth-config.js'
 import { ConnectionRepository } from '../connections/connection-repository.js'
 import { getDb } from '../mongo/connection.js'
@@ -9,8 +9,8 @@ import { TenantTokenStore } from './tenant-token-store.js'
 
 export const authConfig = new AuthConfig()
 
-function createSharedRedis(): Redis {
-  return new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379')
+function createSharedRedis() {
+  return createRedisClient(process.env.REDIS_URL, 'command')
 }
 
 const sharedRedis = createSharedRedis()

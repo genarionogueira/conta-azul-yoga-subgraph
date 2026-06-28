@@ -1,4 +1,5 @@
-import { Redis } from 'ioredis'
+import { createRedisClient } from '../redis/create-redis-client.js'
+import type { Redis } from 'ioredis'
 import { WorkerSyncEventBuffer } from './buffer.js'
 import {
   createWorkerSyncEventSubscriber,
@@ -31,7 +32,7 @@ export function getWorkerSyncEventBuffer(): WorkerSyncEventBuffer {
 
 function getSharedRedis(): Redis {
   if (!sharedRedis) {
-    sharedRedis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379')
+    sharedRedis = createRedisClient(process.env.REDIS_URL, 'blocking')
   }
   return sharedRedis
 }

@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis'
+import { createRedisClient } from '../redis/create-redis-client.js'
 import { getDb } from '../mongo/connection.js'
 import { tenantTokenStore, connectionRepository } from '../credentials/index.js'
 import { CategorySyncService } from './category-sync-service.js'
@@ -12,11 +12,7 @@ export type {
 } from './types.js'
 export { serializeSyncEvent } from './sync-event-publisher.js'
 
-function createSharedRedis(): Redis {
-  return new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379')
-}
-
-const sharedRedis = createSharedRedis()
+const sharedRedis = createRedisClient(process.env.REDIS_URL, 'command')
 
 export const categorySyncService = new CategorySyncService(
   tenantTokenStore,
