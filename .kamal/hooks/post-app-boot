@@ -2,14 +2,27 @@
 # Runs on CI after yoga boots; SSH to droplet to register avcd_edge alias.
 set -euo pipefail
 
+DEPLOY_YML="${KAMAL_DEPLOY_CONFIG:-config/deploy.yml}"
 HOST="${KAMAL_HOST:-}"
 USER="${KAMAL_SSH_USER:-deploy}"
 ALIAS="avcd-conta-azul-yoga-subgraph-web"
 CONTAINER="${KAMAL_CONTAINER_NAME:-}"
 
-[ -n "$HOST" ] || exit 0
+if [ -z "$HOST" ]; then
+  HOST="$(grep -m1 -E '^\s+-\s+' "$DEPLOY_YML" | sed -E 's/^[[:space:]]*-[[:space:]]*//; s/[[:space:]]+$//')"
+fi
 
-ssh -o BatchMode=yes -o ConnectTimeout=15 "${USER}@${HOST}" \
+USER="$(grep -E '^[[:space:]]*user:' "$DEPLOY_YML" | awk '{print $2}' | head -1)"
+USER="${USER:-deploy}"
+
+[ -n "$HOST" ] || { echo "Could not resolve deploy host" >&2; exit 1; }
+
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15)
+if [ -n "${KAMAL_SSH_KEY_PATH:-}" ] && [ -f "${KAMAL_SSH_KEY_PATH}" ]; then
+  SSH_OPTS+=(-i "${KAMAL_SSH_KEY_PATH}")
+fi
+
+ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" \
   "ALIAS='${ALIAS}' CONTAINER='${CONTAINER}' bash -s" <<'REMOTE'
 set -euo pipefail
 
