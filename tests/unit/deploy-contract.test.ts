@@ -70,5 +70,6 @@ describe('deploy contract', () => {
     const text = read('config/deploy.yml')
     expect(text).toContain('WORKER_URL: http://avcd-worker-web:8010')
     expect(text).toContain('WORKER_EVENTS_ENABLED: "true"')
+    expect(text).toContain('network-alias: avcd-conta-azul-yoga-subgraph-web')
   })
 })

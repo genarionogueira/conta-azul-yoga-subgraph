@@ -17,6 +17,7 @@ servers:
     proxy: false
     options:
       network: avcd_edge
+      network-alias: avcd-conta-azul-yoga-subgraph-web
       health-cmd: "wget -qO- http://localhost:4000/health || exit 1"
       health-interval: 15s
       health-retries: 12
