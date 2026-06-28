@@ -1,6 +1,33 @@
 import type { AppContext } from '../../../../context.js'
 import { requireTenant } from '../../../../lib/auth/tenant-context.js'
-import { triggerReconcile } from '../../../../lib/worker-client/trigger-reconcile.js'
+import { categorySyncService } from '../../../../lib/category-sync/index.js'
+import type { SyncResult } from '../../../../lib/category-sync/types.js'
+
+function toGraphqlSyncResult(
+  syncedCount: number,
+  status: 'success' | 'partial' | 'error',
+  errorMessage: string | null
+) {
+  return {
+    syncedCount,
+    syncedAt: new Date().toISOString(),
+    status,
+    errorMessage,
+  }
+}
+
+function mapStoreSyncResult(result: SyncResult) {
+  if (result.errors.includes('token_not_found')) {
+    return toGraphqlSyncResult(0, 'success', null)
+  }
+
+  const status = result.errors.length > 0 ? 'error' : 'success'
+  return toGraphqlSyncResult(
+    result.synced,
+    status,
+    result.errors.length > 0 ? result.errors.join('; ') : null
+  )
+}
 
 export async function syncContaAzulCategories(
   _parent: unknown,
@@ -10,11 +37,19 @@ export async function syncContaAzulCategories(
   const tenantId = requireTenant(context)
   const storeId = args.storeId?.trim() || context.storeId?.trim() || undefined
 
-  const result = await triggerReconcile({ tenantId, storeId })
-  return {
-    syncedCount: result.syncedCount,
-    syncedAt: result.syncedAt,
-    status: result.status,
-    errorMessage: result.errorMessage,
+  if (storeId) {
+    const result = await categorySyncService.syncStore(tenantId, storeId, 'manual')
+    return mapStoreSyncResult(result)
   }
+
+  const result = await categorySyncService.reconcileAll('manual')
+  const errorMessages = result.storeResults
+    .map((store) => store.errorMessage)
+    .filter((message): message is string => Boolean(message))
+
+  return toGraphqlSyncResult(
+    result.syncedCount,
+    result.status,
+    errorMessages.length > 0 ? errorMessages.join('; ') : null
+  )
 }

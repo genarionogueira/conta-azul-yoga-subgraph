@@ -315,6 +315,24 @@ export class ConnectionService {
     return this.deps.tokenStore.listConnectedStoreIds(tenantId)
   }
 
+  private async schedulePostConnectCategorySync(
+    tenantId: string,
+    storeId: string
+  ): Promise<void> {
+    try {
+      const { categorySyncService } = await import('../category-sync/index.js')
+      void categorySyncService.syncStore(tenantId, storeId, 'connect').catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        console.warn(
+          `[credentials] post-connect category sync failed tenant=${tenantId} store=${storeId}: ${message}`
+        )
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.warn(`[credentials] post-connect category sync unavailable: ${message}`)
+    }
+  }
+
   private async exchangeAndSave(
     tenantId: string,
     storeId: string,
@@ -343,6 +361,8 @@ export class ConnectionService {
       console.info(
         `[credentials] connect tenant=${tenantId} store=${storeId} actor=${auditActor(authClaims)}`
       )
+
+      void this.schedulePostConnectCategorySync(tenantId, storeId)
 
       return { success: true, storeId, returnUrl }
     } catch (err) {
