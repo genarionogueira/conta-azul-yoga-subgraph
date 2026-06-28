@@ -4,7 +4,7 @@ import { connectionService } from '../../oauth-services.js'
 
 export async function setupConnection(
   _parent: unknown,
-  args: { storeId: string; code: string; state: string },
+  args: { storeId: string; code: string; state: string; name?: string | null },
   context: AppContext
 ) {
   const tenantId = requireTenant(context)
@@ -13,7 +13,8 @@ export async function setupConnection(
     args.storeId,
     args.code,
     args.state,
-    context.authClaims as Record<string, unknown> | undefined
+    context.authClaims as Record<string, unknown> | undefined,
+    args.name ?? undefined
   )
   return {
     success: result.success,

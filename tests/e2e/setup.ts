@@ -1,4 +1,5 @@
 import { DockerComposeEnvironment, Wait } from 'testcontainers'
+import { MongoClient } from 'mongodb'
 import { Redis } from 'ioredis'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,38 +16,40 @@ const TEST_TOKEN = {
   connected_at: Date.now(),
 }
 
-async function seedCategoriesViaSync(baseUrl: string): Promise<void> {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const res = await fetch(`${baseUrl}/graphql`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `mutation { syncContaAzulCategories { syncedCount status errorMessage } }`,
-      }),
-    })
-    const body = (await res.json()) as {
-      data?: {
-        syncContaAzulCategories: {
-          syncedCount: number
-          status: string
-          errorMessage?: string | null
-        }
+async function seedCategoriesViaWorker(
+  workerUrl: string,
+  mongoUrl: string,
+  tenantId: string,
+  storeIds: string[]
+): Promise<void> {
+  const response = await fetch(`${workerUrl}/internal/reconcile-once`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    throw new Error(
+      `E2E setup: worker reconcile-once failed: ${response.status} ${response.statusText}`
+    )
+  }
+
+  const client = new MongoClient(mongoUrl)
+  try {
+    const db = client.db()
+    const deadline = Date.now() + 30_000
+    while (Date.now() < deadline) {
+      const count = await db.collection('conta_azul_categories').countDocuments({
+        tenantId,
+        storeId: { $in: storeIds },
+      })
+      if (count >= storeIds.length * 2) {
+        return
       }
-      errors?: Array<{ message: string }>
+      await new Promise((resolve) => setTimeout(resolve, 500))
     }
-    if (body.errors?.length) {
-      throw new Error(`E2E setup sync GraphQL errors: ${body.errors.map((e) => e.message).join(', ')}`)
-    }
-    const result = body.data?.syncContaAzulCategories
-    if (result && result.status === 'success' && result.syncedCount > 0) {
-      return
-    }
-    if (attempt === 29) {
-      throw new Error(
-        `E2E setup sync failed after retries: ${JSON.stringify(body.data?.syncContaAzulCategories ?? body.errors)}`
-      )
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    throw new Error(
+      `E2E setup: worker did not sync ${storeIds.length * 2} categories within 30s (got partial data)`
+    )
+  } finally {
+    await client.close()
   }
 }
 
@@ -82,6 +85,7 @@ export async function setup(): Promise<void> {
     .withWaitStrategy('redis', Wait.forHealthCheck())
     .withWaitStrategy('mongo', Wait.forHealthCheck())
     .withWaitStrategy('mock-conta-azul', Wait.forHealthCheck())
+    .withWaitStrategy('worker', Wait.forHealthCheck())
     .withWaitStrategy('yoga-subgraph', Wait.forHealthCheck())
     .up()
 
@@ -97,18 +101,27 @@ export async function setup(): Promise<void> {
 
   const mongoContainer = compose.getContainer('mongo-1')
   const mongoPort = mongoContainer.getMappedPort(27017)
-  process.env.E2E_MONGO_URL = `mongodb://localhost:${mongoPort}/conta_azul`
+  const mongoUrl = `mongodb://localhost:${mongoPort}/conta_azul`
+  process.env.E2E_MONGO_URL = mongoUrl
 
   const wiremockContainer = compose.getContainer('mock-conta-azul-1')
   const wiremockPort = wiremockContainer.getMappedPort(8080)
   process.env.E2E_WIREMOCK_ADMIN_URL = `http://localhost:${wiremockPort}`
+
+  const workerContainer = compose.getContainer('worker-1')
+  const workerPort = workerContainer.getMappedPort(8010)
+  const workerUrl = `http://localhost:${workerPort}`
+  process.env.E2E_WORKER_URL = workerUrl
 
   const redis = new Redis(redisUrl)
   await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-1')
   await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-2')
   await redis.quit()
 
-  await seedCategoriesViaSync(baseUrl)
+  await seedCategoriesViaWorker(workerUrl, mongoUrl, DEFAULT_DEV_TENANT_ID, [
+    'store-1',
+    'store-2',
+  ])
 }
 
 export async function teardown(): Promise<void> {

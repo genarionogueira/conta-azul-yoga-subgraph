@@ -12,7 +12,7 @@ const categoryEntity: EntityDef = {
     { name: 'storeId', type: 'ID', nullable: false },
   ],
   mongo: { collection: 'conta_azul_categories' },
-  rest: { adapter: 'contaAzul', list: 'listCategorias' },
+  rest: null,
   tenant: { field: 'storeId' },
   cache: null,
   key: null,
@@ -66,7 +66,7 @@ describe('diagnoseEntityQuery', () => {
       tenantId: TEST_TENANT_ID,
       tokenStore: createTokenStoreMock(),
       db: createDbMock({}) as never,
-      syncMutationName: 'syncContaAzulCategories',
+      syncMutationName: 'contaAzulWorkerSyncEvents',
     })
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0].code).toBe(CategoryQueryDiagnosticCode.NO_CONNECTED_STORES)
@@ -81,7 +81,7 @@ describe('diagnoseEntityQuery', () => {
         getToken: vi.fn().mockResolvedValue({ access_token: 'tok' }),
       }),
       db: createDbMock({ 'store-1': 3 }) as never,
-      syncMutationName: 'syncContaAzulCategories',
+      syncMutationName: 'contaAzulWorkerSyncEvents',
     })
     expect(diagnostics).toHaveLength(0)
   })
@@ -95,7 +95,7 @@ describe('diagnoseEntityQuery', () => {
         getToken: vi.fn().mockResolvedValue({ access_token: 'tok' }),
       }),
       db: createDbMock({}) as never,
-      syncMutationName: 'syncContaAzulCategories',
+      syncMutationName: 'contaAzulWorkerSyncEvents',
     })
     expect(diagnostics[0].code).toBe(CategoryQueryDiagnosticCode.DATA_NOT_SYNCED)
   })
@@ -108,7 +108,7 @@ describe('diagnoseEntityQuery', () => {
         ping: vi.fn().mockRejectedValue(new Error('redis down')),
       }),
       db: createDbMock({}) as never,
-      syncMutationName: 'syncContaAzulCategories',
+      syncMutationName: 'contaAzulWorkerSyncEvents',
     })
     expect(diagnostics[0].code).toBe(CategoryQueryDiagnosticCode.REDIS_UNAVAILABLE)
   })
@@ -123,7 +123,7 @@ describe('diagnoseEntityQuery', () => {
         isStoreRegistered: vi.fn().mockResolvedValue(false),
       }),
       db: createDbMock({}) as never,
-      syncMutationName: 'syncContaAzulCategories',
+      syncMutationName: 'contaAzulWorkerSyncEvents',
     })
     expect(diagnostics[0].code).toBe(CategoryQueryDiagnosticCode.STORE_NOT_CONNECTED)
   })

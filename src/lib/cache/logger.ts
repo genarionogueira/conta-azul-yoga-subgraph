@@ -15,6 +15,7 @@ export type CacheLogEvent =
   | 'api_fetch_failed'
   | 'sync_failed'
   | 'resolver_ensure_fresh'
+  | 'category_sync_skip'
 
 const WARN_EVENTS = new Set<CacheLogEvent>([
   'skip_no_token',

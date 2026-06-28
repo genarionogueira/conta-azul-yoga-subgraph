@@ -1,7 +1,13 @@
-# Shared local dev config — mirrors config/deploy.yml env.clear + deploy.development.yml (Zitadel).
-# Secrets: .env.local via make dev (--env-file). Personal: compose.override.local.yaml
+# Shared local dev config — merges on compose.yaml. Secrets: .env.local via make dev (--env-file).
 services:
+  mongo:
+    ports:
+      - '127.0.0.1:${MONGO_LOCAL_PORT:-27018}:27017'
+
   yoga-subgraph:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "zitadel.avcd.ai:${ZITADEL_HOST_IP}"
     environment:
       PORT: '4000'
       NODE_ENV: development
@@ -19,8 +25,44 @@ services:
       KEYCLOAK_ENABLED: 'false'
       ZITADEL_ISSUER: https://zitadel.avcd.ai
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,https://dev.avocado.tech
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/conta_azul}
+      # Always use compose Redis/Mongo — do not substitute from .env.local (worker shares this network).
+      REDIS_URL: redis://redis:6379
+      MONGODB_URL: mongodb://mongo:27017/conta_azul
+      WORKER_URL: http://worker:8010
+      WORKER_EVENTS_ENABLED: ${WORKER_EVENTS_ENABLED:-true}
+      WORKER_EVENTS_BUFFER_SIZE: ${WORKER_EVENTS_BUFFER_SIZE:-100}
+      WORKER_EVENTS_STREAM_MAXLEN: ${WORKER_EVENTS_STREAM_MAXLEN:-1000}
+      WORKER_EVENTS_STREAM_MINID_DAYS: ${WORKER_EVENTS_STREAM_MINID_DAYS:-30}
+      CATEGORIES_COLLECTION: conta_azul_categories
+      TENANT_DISCOVERY_MODE: scan
       CONTA_AZUL_CLIENT_ID: ${CONTA_AZUL_CLIENT_ID:-}
       CONTA_AZUL_CLIENT_SECRET: ${CONTA_AZUL_CLIENT_SECRET:-}
       JWT_SECRET: ${JWT_SECRET:-}
+
+  worker:
+    build:
+      context: ../avcd-worker
+    depends_on:
+      yoga-subgraph:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    ports:
+      - '${WORKER_PORT:-8010}:8010'
+    environment:
+      ENABLE_DEV_RECONCILE_TRIGGER: 'true'
+      SCHEDULER_ENABLED: 'true'
+      RECONCILE_INTERVAL_SECONDS: '60'
+      NODE_ENV: development
+      YOGA_GRAPHQL_URL: http://yoga-subgraph:4000
+      CONTA_AZUL_SERVICE_JWT: ${CONTA_AZUL_SERVICE_JWT:-}
+      REDIS_URL: redis://redis:6379
+      DEFAULT_DEV_TENANT_ID: dev-tenant
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8010/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Register stable internal DNS on avcd_edge for cross-service calls (web-dash, worker).
+set -euo pipefail
+
+ALIAS="avcd-conta-azul-yoga-subgraph-web"
+CONTAINER="${KAMAL_CONTAINER_NAME:-}"
+
+if [ -z "$CONTAINER" ]; then
+  CONTAINER="$(docker ps -q --filter 'name=avcd-conta-azul-yoga-subgraph-web' | head -1)"
+fi
+
+[ -n "$CONTAINER" ] || exit 0
+
+if docker inspect "$CONTAINER" --format '{{range .NetworkSettings.Networks.avcd_edge.Aliases}}{{println .}}{{end}}' 2>/dev/null | grep -qx "$ALIAS"; then
+  echo "✓ $ALIAS already registered on avcd_edge"
+  exit 0
+fi
+
+docker network disconnect avcd_edge "$CONTAINER" 2>/dev/null || true
+docker network connect --alias "$ALIAS" avcd_edge "$CONTAINER"
+echo "✓ Connected $CONTAINER to avcd_edge as $ALIAS"

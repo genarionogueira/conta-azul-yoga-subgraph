@@ -1,12 +1,14 @@
 type ContaAzulCategory
   @model
   @mongo(collection: "conta_azul_categories")
-  @rest(adapter: "contaAzul", list: "listCategorias")
-  @cache(ttl: "24h")
   @tenant(field: "storeId")
   @key(fields: "id storeId") {
   id: ID!
   storeId: ID!
   nome: String!
   tipo: String!
+}
+
+extend type Mutation {
+  syncContaAzulCategories(storeId: ID): SyncResult!
 }

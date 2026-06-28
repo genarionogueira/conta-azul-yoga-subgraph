@@ -9,7 +9,9 @@ extend schema
   )
 
 type Query
-type Mutation
+type Mutation {
+  _schemaPlaceholder: Boolean
+}
 
 input StringComparisonExp { _eq: String }
 input IDComparisonExp { _eq: ID }
@@ -38,7 +40,6 @@ const categorySdl = `
 type ContaAzulCategory
   @model
   @mongo(collection: "conta_azul_categories")
-  @rest(adapter: "contaAzul", list: "listCategorias")
   @tenant(field: "storeId")
   @key(fields: "id storeId") {
   id: ID!
@@ -61,10 +62,10 @@ describe('buildEntitySchemaFromSdl', () => {
     expect(queryType?.getFields().contaAzulCategoriesAggregate).toBeDefined()
   })
 
-  it('GivenModelType_WhenAssembled_ThenSyncMutationExists', () => {
+  it('GivenModelType_WhenAssembled_ThenSyncMutationAbsent', () => {
     const schema = buildEntitySchemaFromSdl([baseSdl, categorySdl])
     const mutationType = schema.getMutationType()
-    expect(mutationType?.getFields().syncContaAzulCategories).toBeDefined()
+    expect(mutationType?.getFields().syncContaAzulCategories).toBeUndefined()
   })
 
   it('GivenModelType_WhenAssembled_ThenGenerationDirectivesNotInSDL', () => {

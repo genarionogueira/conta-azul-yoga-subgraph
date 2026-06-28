@@ -1,22 +1,23 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { JWTPayload } from 'jose'
 import { createYoga } from 'graphql-yoga'
+import { useServer } from 'graphql-ws/use/ws'
+import { WebSocketServer } from 'ws'
 import { createYogaMaskError } from './lib/errors/index.js'
-import { authenticateRequest, BearerAuthError } from './lib/auth/verify-bearer.js'
+import { authenticateRequest, BearerAuthError, extractBearerToken, verifyBearerToken } from './lib/auth/verify-bearer.js'
 import { loadAuthSettings, logAuthSettingsOnStartup } from './lib/auth/settings.js'
 import { isAllowedCorsOrigin, loadCorsOptions } from './lib/auth/cors.js'
 import { checkJwksReachability } from './lib/auth/jwks-health.js'
 import { getAuthMetrics, recordAuthFailure } from './lib/auth/metrics.js'
 import { runWithRequestAuth } from './lib/auth/request-auth-store.js'
-import { DEFAULT_DEV_TENANT_ID } from './lib/auth/tenant-context.js'
-import {
-  buildContext,
-  getContaAzulClientForStore,
-  listConnectedStoreIds,
-} from './context.js'
+import { buildWsAppContext } from './lib/auth/ws-context.js'
+import { buildContext, type AppContext } from './context.js'
 import { initMongo, getDb, closeMongo } from './lib/mongo/connection.js'
-import { ensureCategoriesIndexes } from './lib/mongo/indexes.js'
-import { syncToMongo } from './lib/sync/service.js'
+import { ensureCategoriesIndexes, ensureConnectionsIndexes } from './lib/mongo/indexes.js'
+import {
+  startWorkerSyncEventSubscriber,
+  stopWorkerSyncEventSubscriber,
+} from './lib/worker-events/index.js'
 import { schemaPromise } from './schema/index.js'
 import { handleConnectRequest } from './http/connect-routes.js'
 import { authConfig, connectionService } from './schema/auth/oauth-services.js'
@@ -119,8 +120,20 @@ async function authenticateIncomingRequest(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<JWTPayload | undefined> {
+  const authHeader = req.headers.authorization
+  const hasBearer =
+    typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+
   if (!authSettings.jwtRequired) {
-    return undefined
+    if (!hasBearer) {
+      return undefined
+    }
+    try {
+      const token = extractBearerToken(authHeader)
+      return await verifyBearerToken(token, authSettings)
+    } catch {
+      return undefined
+    }
   }
 
   try {
@@ -144,6 +157,12 @@ async function authenticateIncomingRequest(
   }
 }
 
+async function buildWsAppContextForServer(
+  connectionParams: Record<string, unknown> | null | undefined
+): Promise<AppContext> {
+  return buildWsAppContext(connectionParams, authSettings)
+}
+
 const connectRoutesDeps = {
   connectionService,
   authConfig,
@@ -151,30 +170,11 @@ const connectRoutesDeps = {
   jwtRequired: authSettings.jwtRequired,
 }
 
-async function startupSyncCategories(): Promise<void> {
-  try {
-    const tenantId = DEFAULT_DEV_TENANT_ID
-    const ids = await listConnectedStoreIds(tenantId)
-    for (const sid of ids) {
-      const client = await getContaAzulClientForStore(tenantId, sid)
-      if (!client) continue
-      await syncToMongo(getDb(), {
-        collectionName: 'conta_azul_categories',
-        storeId: sid,
-        fetcher: () =>
-          client
-            .listCategorias()
-            .then((items) => items as unknown as Record<string, unknown>[]),
-      }).catch((e) => console.error(`Startup sync categories ${sid}:`, e))
-    }
-  } catch (e) {
-    console.error('Startup sync store list failed:', e)
-  }
-}
-
 async function main(): Promise<void> {
   await initMongo()
   await ensureCategoriesIndexes(getDb())
+  await ensureConnectionsIndexes(getDb())
+  await startWorkerSyncEventSubscriber()
 
   const schema = await schemaPromise
   const isDev = process.env.NODE_ENV !== 'production'
@@ -190,6 +190,10 @@ async function main(): Promise<void> {
   })
 
   const server = createServer((req, res) => {
+    if (req.headers.upgrade?.toLowerCase() === 'websocket') {
+      return
+    }
+
     void (async () => {
       const origin = req.headers.origin
       if (
@@ -263,14 +267,26 @@ async function main(): Promise<void> {
     })
   })
 
+  const wsServer = new WebSocketServer({ server, path: '/graphql' })
+  useServer(
+    {
+      schema,
+      context: async (ctx) =>
+        buildWsAppContextForServer(
+          ctx.connectionParams as Record<string, unknown> | null | undefined
+        ),
+    },
+    wsServer
+  )
+
   server.listen(PORT, () => {
     console.log(`Yoga subgraph running on http://localhost:${PORT}/graphql`)
     console.log(`Conta Azul connect UI: http://localhost:${PORT}/connect`)
-    void startupSyncCategories()
   })
 
   const shutdown = async () => {
     server.close()
+    await stopWorkerSyncEventSubscriber()
     await closeMongo()
     process.exit(0)
   }

@@ -68,7 +68,9 @@ export function makeConnectionResolver(entity: EntityDef) {
         where: args.where ?? null,
         tokenStore: getTokenStore(),
         db: getDb(),
-        syncMutationName: syncMutationName(entity.name),
+        syncMutationName: entity.rest
+          ? syncMutationName(entity.name)
+          : 'contaAzulWorkerSyncEvents',
       })
     }
 

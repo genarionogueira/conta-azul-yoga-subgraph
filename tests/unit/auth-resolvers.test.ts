@@ -5,7 +5,9 @@ const mockStartConnect = vi.fn()
 const mockCompleteConnect = vi.fn()
 const mockGetStatus = vi.fn()
 const mockListConnected = vi.fn()
+const mockListConnections = vi.fn()
 const mockDisconnect = vi.fn()
+const mockUpdateConnection = vi.fn()
 
 vi.mock('../../src/schema/auth/oauth-services.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/schema/auth/oauth-services.js')>()
@@ -16,7 +18,9 @@ vi.mock('../../src/schema/auth/oauth-services.js', async (importOriginal) => {
       completeConnect: (...args: unknown[]) => mockCompleteConnect(...args),
       getStatus: (...args: unknown[]) => mockGetStatus(...args),
       listConnected: (...args: unknown[]) => mockListConnected(...args),
+      listConnections: (...args: unknown[]) => mockListConnections(...args),
       disconnect: (...args: unknown[]) => mockDisconnect(...args),
+      updateConnection: (...args: unknown[]) => mockUpdateConnection(...args),
     },
   }
 })
@@ -33,11 +37,15 @@ const { connectionStatus } = await import(
 const { connectedStores } = await import(
   '../../src/schema/auth/resolvers/Query/connectedStores.js'
 )
+const { connections } = await import('../../src/schema/auth/resolvers/Query/connections.js')
 const { setupConnection } = await import(
   '../../src/schema/auth/resolvers/Mutation/setupConnection.js'
 )
 const { disconnectStore } = await import(
   '../../src/schema/auth/resolvers/Mutation/disconnectStore.js'
+)
+const { updateConnection } = await import(
+  '../../src/schema/auth/resolvers/Mutation/updateConnection.js'
 )
 
 describe('auth resolvers', () => {
@@ -57,7 +65,9 @@ describe('auth resolvers', () => {
     mockCompleteConnect.mockReset()
     mockGetStatus.mockReset()
     mockListConnected.mockReset()
+    mockListConnections.mockReset()
     mockDisconnect.mockReset()
+    mockUpdateConnection.mockReset()
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -128,7 +138,36 @@ describe('auth resolvers', () => {
       'store-1',
       'auth-code',
       'valid-state',
+      undefined,
       undefined
+    )
+  })
+
+  it('GivenCustomName_WhenSetupConnection_ThenPassesNameToService', async () => {
+    mockCompleteConnect.mockResolvedValue({
+      success: true,
+      storeId: 'store-1',
+    })
+
+    await setupConnection(
+      {},
+      {
+        storeId: 'store-1',
+        code: 'auth-code',
+        state: 'valid-state',
+        name: 'Butantã',
+      },
+      context,
+      {} as never
+    )
+
+    expect(mockCompleteConnect).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
+      'store-1',
+      'auth-code',
+      'valid-state',
+      undefined,
+      'Butantã'
     )
   })
 
@@ -246,6 +285,29 @@ describe('auth resolvers', () => {
     ])
   })
 
+  it('GivenConnections_WhenQuery_ThenListsIdAndName', async () => {
+    mockListConnections.mockResolvedValue([
+      {
+        id: 'store-a',
+        name: 'Butantã',
+        connectedAt: '2026-06-27T19:00:00.000Z',
+        isConnected: true,
+      },
+    ])
+
+    const result = await connections({}, {}, context, {} as never)
+
+    expect(result).toEqual([
+      {
+        id: 'store-a',
+        name: 'Butantã',
+        connectedAt: '2026-06-27T19:00:00.000Z',
+        isConnected: true,
+      },
+    ])
+    expect(mockListConnections).toHaveBeenCalledWith(TEST_TENANT_ID)
+  })
+
   it('GivenExistingToken_WhenDisconnectStore_ThenSuccessTrue', async () => {
     mockDisconnect.mockResolvedValue({
       success: true,
@@ -272,6 +334,54 @@ describe('auth resolvers', () => {
     const result = await disconnectStore({}, { storeId: 'store-1' }, context, {} as never)
 
     expect(result.success).toBe(false)
+    expect(result.error).toContain('not connected')
+  })
+
+  it('GivenValidArgs_WhenUpdateConnection_ThenDelegatesToService', async () => {
+    mockUpdateConnection.mockResolvedValue({
+      success: true,
+      id: 'store-1',
+      name: 'Renamed Store',
+      error: null,
+    })
+
+    const result = await updateConnection(
+      {},
+      { id: 'store-1', name: 'Renamed Store' },
+      context,
+      {} as never
+    )
+
+    expect(result).toEqual({
+      success: true,
+      id: 'store-1',
+      name: 'Renamed Store',
+      error: null,
+    })
+    expect(mockUpdateConnection).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
+      'store-1',
+      'Renamed Store'
+    )
+  })
+
+  it('GivenServiceFailure_WhenUpdateConnection_ThenReturnsErrorPayload', async () => {
+    mockUpdateConnection.mockResolvedValue({
+      success: false,
+      id: 'store-1',
+      name: null,
+      error: 'Store store-1 is not connected',
+    })
+
+    const result = await updateConnection(
+      {},
+      { id: 'store-1', name: 'Renamed Store' },
+      context,
+      {} as never
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.name).toBeNull()
     expect(result.error).toContain('not connected')
   })
 })

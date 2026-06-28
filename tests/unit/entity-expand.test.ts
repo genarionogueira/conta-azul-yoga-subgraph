@@ -13,7 +13,7 @@ const categoryEntity: EntityDef = {
     { name: 'tipo', type: 'String', nullable: false },
   ],
   mongo: { collection: 'conta_azul_categories' },
-  rest: { adapter: 'contaAzul', list: 'listCategorias' },
+  rest: null,
   tenant: { field: 'storeId' },
   cache: null,
   key: { fields: 'id storeId' },
@@ -23,7 +23,6 @@ const annotatedSdl = `
 type ContaAzulCategory
   @model
   @mongo(collection: "conta_azul_categories")
-  @rest(adapter: "contaAzul", list: "listCategorias")
   @tenant(field: "storeId")
   @key(fields: "id storeId") {
   id: ID!
@@ -47,7 +46,7 @@ describe('parseEntityDef', () => {
     const entity = parseEntityDef(getObjectType(annotatedSdl))
     expect(entity?.name).toBe('ContaAzulCategory')
     expect(entity?.mongo.collection).toBe('conta_azul_categories')
-    expect(entity?.rest?.list).toBe('listCategorias')
+    expect(entity?.rest).toBeNull()
     expect(entity?.key?.fields).toBe('id storeId')
   })
 
@@ -88,15 +87,20 @@ describe('expandEntitySDL', () => {
     expect(sdl).toContain('distinct_on: [ContaAzulCategory_select_column!]')
   })
 
-  it('GivenRestDirective_WhenExpanding_ThenEmitsSyncMutation', () => {
+  it('GivenNoRestDirective_WhenExpanding_ThenNoSyncMutationForCategories', () => {
     const sdl = expandEntitySDL(categoryEntity)
-    expect(sdl).toContain('syncContaAzulCategories(storeId: ID): SyncResult!')
-  })
-
-  it('GivenNoRestDirective_WhenExpanding_ThenNoSyncMutation', () => {
-    const sdl = expandEntitySDL({ ...categoryEntity, rest: null })
     expect(sdl).not.toContain('extend type Mutation')
     expect(sdl).not.toContain('syncContaAzulCategories')
+  })
+
+  it('GivenRestDirectiveOnOtherEntity_WhenExpanding_ThenEmitsSyncMutation', () => {
+    const entityWithRest: EntityDef = {
+      ...categoryEntity,
+      name: 'ContaAzulSale',
+      rest: { adapter: 'contaAzul', list: 'listVendas' },
+    }
+    const sdl = expandEntitySDL(entityWithRest)
+    expect(sdl).toContain('syncContaAzulSales(storeId: ID): SyncResult!')
   })
 
   it('GivenKeyDirective_WhenExpanding_ThenKeyPreservedOnObjectType', () => {

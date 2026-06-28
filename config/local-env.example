@@ -9,6 +9,7 @@ CONTA_AZUL_CLIENT_ID=
 CONTA_AZUL_CLIENT_SECRET=
 
 # Optional — omit to use compose Redis/Mongo services
-# REDIS_URL=
-# MONGODB_URL=
+# MONGO_LOCAL_PORT=27018
+# WORKER_PORT=8010
 # JWT_SECRET=
+# CONTA_AZUL_SERVICE_JWT=   # HS256 JWT with sub=avcd-worker for bundled worker → yoga GraphQL

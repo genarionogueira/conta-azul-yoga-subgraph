@@ -65,4 +65,11 @@ describe('deploy contract', () => {
     expect(text).toContain('__ZITADEL_PROJECT_ID__')
     expect(text).toContain('ZITADEL_PROJECT_ID')
   })
+
+  it('GivenDeployYml_WhenParsed_ThenWorkerUrlPointsToAvcdWorkerWeb', () => {
+    const text = read('config/deploy.yml')
+    expect(text).toContain('WORKER_URL: http://avcd-worker-web:8010')
+    expect(text).toContain('WORKER_EVENTS_ENABLED: "true"')
+    expect(text).toContain('network-alias: avcd-conta-azul-yoga-subgraph-web')
+  })
 })
