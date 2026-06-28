@@ -75,19 +75,15 @@ describe('subscribeWorkerSyncEvents', () => {
     void iterator.return(undefined)
   })
 
-  it('GivenSeedOnly_WhenSubscribe_ThenDoesNotReplaySeedAsLive', async () => {
+  it('GivenSeedOnly_WhenSubscribe_ThenReplaysBufferedEvents', async () => {
     resetWorkerSyncEventsForTests()
     const buffer = getWorkerSyncEventBuffer()
     buffer.seed('dev-tenant', [sampleEvent({ message: 'historical' })])
 
     const iterator = subscribeWorkerSyncEvents('dev-tenant')
-    const pending = iterator.next()
+    const result = await iterator.next()
 
-    const result = await Promise.race([
-      pending,
-      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 50)),
-    ])
-    expect(result).toBe('timeout')
+    expect(result.value?.message).toBe('historical')
 
     void iterator.return(undefined)
   })

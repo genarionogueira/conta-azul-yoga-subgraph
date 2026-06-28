@@ -25,6 +25,14 @@ export async function* subscribeWorkerSyncEvents(
   const queue: WorkerSyncEventRecord[] = []
   const wake = { fn: null as (() => void) | null }
 
+  const initial = buffer.list(tenantId, {
+    storeId: options.storeId ?? undefined,
+    limit: 100,
+  })
+  for (const event of initial) {
+    queue.push(event)
+  }
+
   const onAppend = (eventTenantId: string, event: WorkerSyncEventRecord) => {
     if (eventTenantId !== tenantId) return
     if (!matchesStoreFilter(event, options.storeId)) return
