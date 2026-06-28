@@ -25,15 +25,22 @@ type Query {
   authorizationUrl(storeId: ID!, returnUrl: String): OAuthUrl!
   connectionStatus(storeId: ID!): ConnectionStatus!
   connectedStores: [ConnectedStoreSummary!]!
+  connections: [ContaAzulConnection!]!
   hello: String!
+  contaAzulWorkerSyncEvents(storeId: ID, limit: Int = 20): WorkerSyncEventConnection!
   contaAzulCategories(where: ContaAzulCategory_bool_exp, order_by: [ContaAzulCategory_order_by!], distinct_on: [ContaAzulCategory_select_column!], first: Int, after: String, last: Int, before: String): ContaAzulCategoryConnection!
   contaAzulCategoriesAggregate(where: ContaAzulCategory_bool_exp, distinct_on: [ContaAzulCategory_select_column!]): ContaAzulCategory_aggregate!
 }
 
 type Mutation {
-  setupConnection(storeId: ID!, code: String!, state: String!): SetupResult!
+  setupConnection(storeId: ID!, code: String!, state: String!, name: String): SetupResult!
+  completeOAuthCallback(code: String!, state: String!, name: String): SetupResult!
   disconnectStore(storeId: ID!): DisconnectResult!
+  updateConnection(id: ID!, name: String!): UpdateConnectionResult!
   syncContaAzulCategories(storeId: ID): SyncResult!
+  reconcileStore(storeId: String!, tenantId: String!, trigger: String): ReconcileStoreResult!
+  reconcileAll(trigger: String! = "scheduled"): ReconcileAllResult!
+  disconnectStoreData(storeId: String!, tenantId: String!): DisconnectStoreDataResult!
 }
 
 type ContaAzulAuthConfig {
@@ -70,9 +77,23 @@ type ConnectedStoreSummary {
   expiresAt: String
 }
 
+type ContaAzulConnection {
+  id: ID!
+  name: String!
+  connectedAt: String
+  isConnected: Boolean!
+}
+
 type DisconnectResult {
   success: Boolean!
   storeId: ID!
+  error: String
+}
+
+type UpdateConnectionResult {
+  success: Boolean!
+  id: ID!
+  name: String
   error: String
 }
 
@@ -163,6 +184,66 @@ type SyncResult {
   errorMessage: String
 }
 
+type ReconcileStoreResult {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type ReconcileAllStoreResult {
+  tenantId: String!
+  storeId: String!
+  status: String!
+  syncedCount: Int!
+  skippedCount: Int!
+  errorMessage: String
+}
+
+type ReconcileAllResult {
+  status: String!
+  syncedCount: Int!
+  storesProcessed: Int!
+  successCount: Int!
+  errorCount: Int!
+  storeResults: [ReconcileAllStoreResult!]!
+}
+
+type DisconnectStoreDataResult {
+  storeId: String!
+  deleted: Int!
+}
+
+enum WorkerSyncEventType {
+  RECONCILE_STARTED
+  RECONCILE_COMPLETED
+  RECONCILE_FAILED
+  STORE_DATA_DELETED
+  RECONCILE_CYCLE_COMPLETED
+  WORKER_LOG
+}
+
+type WorkerSyncEvent {
+  type: WorkerSyncEventType!
+  tenantId: ID!
+  storeId: ID
+  trigger: String
+  status: String
+  inserted: Int
+  updated: Int
+  deleted: Int
+  skipped: Int
+  durationMs: Int
+  errorMessage: String
+  message: String
+  level: String
+  at: String!
+}
+
+type WorkerSyncEventConnection {
+  events: [WorkerSyncEvent!]!
+}
+
 input ContaAzulCategory_bool_exp {
   _and: [ContaAzulCategory_bool_exp!]
   _or: [ContaAzulCategory_bool_exp!]
@@ -239,3 +320,7 @@ type _Service {
 }
 
 union _Entity = ContaAzulCategory
+
+type Subscription {
+  contaAzulWorkerSyncEvents(storeId: ID): WorkerSyncEvent!
+}

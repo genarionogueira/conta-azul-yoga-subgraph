@@ -33,11 +33,9 @@ describe('E2E: Entity Framework — directive-driven entity generates full API',
     expect(sdl).not.toContain('@mongo')
   })
 
-  it('GivenModelDirective_WhenServerBoots_ThenSyncMutationExists', async () => {
+  it('GivenModelDirective_WhenServerBoots_ThenSyncMutationAbsent', async () => {
     const res = await gqlRaw(`mutation { syncContaAzulCategories { syncedCount status } }`)
-    expect(res.errors).toBeUndefined()
-    expect(
-      (res.data as { syncContaAzulCategories: { status: string } }).syncContaAzulCategories.status
-    ).toMatch(/success|partial|error/)
+    expect(res.errors).toBeDefined()
+    expect(res.errors?.[0]?.message).toMatch(/syncContaAzulCategories|Cannot query field/)
   })
 })

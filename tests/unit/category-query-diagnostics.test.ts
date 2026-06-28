@@ -87,7 +87,7 @@ describe('diagnoseCategoryQuery', () => {
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]?.code).toBe(CategoryQueryDiagnosticCode.TOKEN_MISSING)
     expect(diagnostics[0]?.storeId).toBe('butanta')
-    expect(diagnostics[0]?.hint).toContain('syncContaAzulCategories')
+    expect(diagnostics[0]?.hint).toContain('category sync')
   })
 
   it('GivenTokenWithoutMongoData_WhenDiagnosing_ThenReturnsDataNotSynced', async () => {

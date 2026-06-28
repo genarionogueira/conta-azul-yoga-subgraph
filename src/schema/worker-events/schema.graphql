@@ -1,0 +1,37 @@
+enum WorkerSyncEventType {
+  RECONCILE_STARTED
+  RECONCILE_COMPLETED
+  RECONCILE_FAILED
+  STORE_DATA_DELETED
+  RECONCILE_CYCLE_COMPLETED
+  WORKER_LOG
+}
+
+type WorkerSyncEvent @shareable {
+  type: WorkerSyncEventType!
+  tenantId: ID!
+  storeId: ID
+  trigger: String
+  status: String
+  inserted: Int
+  updated: Int
+  deleted: Int
+  skipped: Int
+  durationMs: Int
+  errorMessage: String
+  message: String
+  level: String
+  at: String!
+}
+
+type WorkerSyncEventConnection {
+  events: [WorkerSyncEvent!]!
+}
+
+extend type Query {
+  contaAzulWorkerSyncEvents(storeId: ID, limit: Int = 20): WorkerSyncEventConnection!
+}
+
+extend type Subscription {
+  contaAzulWorkerSyncEvents(storeId: ID): WorkerSyncEvent!
+}

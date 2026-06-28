@@ -21,7 +21,7 @@ function noConnectedStoresDiagnostic(): CategoryQueryDiagnostic {
   return {
     code: CategoryQueryDiagnosticCode.NO_CONNECTED_STORES,
     message: 'No Conta Azul stores are connected.',
-    hint: 'Run setupConnection OAuth flow for a store, then syncContaAzulCategories.',
+    hint: 'Run setupConnection OAuth flow for a store; category sync runs automatically via avcd-worker.',
     storeId: null,
   }
 }
@@ -30,7 +30,7 @@ function tokenMissingDiagnostic(storeId: string): CategoryQueryDiagnostic {
   return {
     code: CategoryQueryDiagnosticCode.TOKEN_MISSING,
     message: `Store "${storeId}" is registered but has no OAuth token.`,
-    hint: `Re-authorize store "${storeId}" via setupConnection, then run: mutation { syncContaAzulCategories(storeId: "${storeId}") { syncedCount status errorMessage } }`,
+    hint: `Re-authorize store "${storeId}" via setupConnection; category sync runs when connected.`,
     storeId,
   }
 }
@@ -48,7 +48,7 @@ function dataNotSyncedDiagnostic(storeId: string): CategoryQueryDiagnostic {
   return {
     code: CategoryQueryDiagnosticCode.DATA_NOT_SYNCED,
     message: `Store "${storeId}" has a token but no categories in the local cache.`,
-    hint: `mutation { syncContaAzulCategories(storeId: "${storeId}") { syncedCount status errorMessage } }`,
+    hint: `Trigger syncContaAzulCategories or wait for the worker scheduler, or query { contaAzulWorkerSyncEvents(storeId: "${storeId}") { events { type status } } }`,
     storeId,
   }
 }

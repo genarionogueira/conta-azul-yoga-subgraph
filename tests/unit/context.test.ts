@@ -18,8 +18,11 @@ vi.mock('../../src/lib/auth/request-auth-store.js', () => ({
   getRequestAuthClaims: vi.fn(() => undefined),
 }))
 
+const { getRequestAuthClaims } = await import('../../src/lib/auth/request-auth-store.js')
 const { buildContext } = await import('../../src/context.js')
 const { TEST_TENANT_ID } = await import('../helpers/test-context.js')
+const { WORKER_CONTEXT_TENANT_ID } = await import('../../src/lib/auth/tenant-context.js')
+const { WORKER_JWT_SUBJECT } = await import('../../src/lib/auth/worker-auth.js')
 
 function createRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/graphql', {
@@ -32,6 +35,7 @@ describe('buildContext', () => {
   beforeEach(() => {
     mockGetClientForStore.mockReset()
     process.env.JWT_REQUIRED = 'false'
+    vi.mocked(getRequestAuthClaims).mockReturnValue(undefined)
   })
 
   it('GivenRequestWithStoreIdHeader_WhenBuildingContext_ThenStoreIdIsExtracted', async () => {
@@ -80,5 +84,40 @@ describe('buildContext', () => {
 
     expect(context.storeId).toBe('store-unknown')
     expect(context.contaAzulClient).toBeUndefined()
+  })
+
+  it('GivenWorkerJwtWithJwtRequired_WhenBuildingContext_ThenDoesNotThrow', async () => {
+    process.env.JWT_REQUIRED = 'true'
+    vi.mocked(getRequestAuthClaims).mockReturnValue({ sub: WORKER_JWT_SUBJECT })
+
+    const context = await buildContext({
+      request: createRequest(),
+    } as import('graphql-yoga').YogaInitialContext)
+
+    expect(context.tenantId).toBe(WORKER_CONTEXT_TENANT_ID)
+  })
+
+  it('GivenWorkerJwt_WhenBuildingContext_ThenTenantIdIsWorkerPlaceholder', async () => {
+    process.env.JWT_REQUIRED = 'true'
+    vi.mocked(getRequestAuthClaims).mockReturnValue({ sub: WORKER_JWT_SUBJECT })
+
+    const context = await buildContext({
+      request: createRequest(),
+    } as import('graphql-yoga').YogaInitialContext)
+
+    expect(context.tenantId).toBe(WORKER_CONTEXT_TENANT_ID)
+    expect(context.contaAzulClient).toBeUndefined()
+    expect(mockGetClientForStore).not.toHaveBeenCalled()
+  })
+
+  it('GivenNoClaimsWithJwtRequired_WhenBuildingContext_ThenThrowsTenantRequiredError', async () => {
+    process.env.JWT_REQUIRED = 'true'
+    vi.mocked(getRequestAuthClaims).mockReturnValue(undefined)
+
+    await expect(
+      buildContext({
+        request: createRequest(),
+      } as import('graphql-yoga').YogaInitialContext)
+    ).rejects.toThrow('Unable to resolve tenant from JWT claims')
   })
 })

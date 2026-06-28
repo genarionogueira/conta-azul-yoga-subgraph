@@ -24,8 +24,20 @@ export async function ensureCategoriesIndexes(db: Db): Promise<void> {
   await createIndexSafe(col, { tipo: 1 })
   await createIndexSafe(col, { storeId: 1, tipo: 1 })
   await createIndexSafe(col, { _syncedAt: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1, id: 1 })
 
   const meta = db.collection(META_COLLECTION)
   await createIndexSafe(meta, { expiresAt: 1 })
   await createIndexSafe(meta, { collection: 1, storeId: 1 })
+}
+
+function connectionsCollectionName(): string {
+  return process.env.CONNECTIONS_COLLECTION?.trim() || 'conta_azul_connections'
+}
+
+export async function ensureConnectionsIndexes(db: Db): Promise<void> {
+  const col = db.collection(connectionsCollectionName())
+  await createIndexSafe(col, { tenantId: 1, id: 1 }, { unique: true })
+  await createIndexSafe(col, { tenantId: 1, connectedAt: -1 })
 }

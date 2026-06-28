@@ -27,10 +27,18 @@ services:
     depends_on:
       mock-conta-azul:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - default
     environment:
       JWT_REQUIRED: 'false'
+      JWT_SECRET: e2e-jwt-secret
+      JWT_ISSUER: avcd
+      JWT_AUDIENCE: conta-azul-service
       ZITADEL_PROJECT_ID: e2e-project-id
-      # Unset dev redirect so /callback renders the built-in success page (no web-dash on 3001)
       WEB_DASH_PUBLIC_URL: ''
       CONTA_AZUL_API_BASE_URL: http://mock-conta-azul:8080
       CONTA_AZUL_TOKEN_URL: http://mock-conta-azul:8080/oauth2/token
@@ -38,10 +46,41 @@ services:
       CONTA_AZUL_REDIRECT_URI: http://yoga-subgraph:4000/callback
       REDIS_URL: redis://redis:6379
       MONGODB_URL: mongodb://mongo:27017/conta_azul
+      WORKER_URL: http://worker:8010
+      WORKER_EVENTS_ENABLED: 'true'
+      WORKER_EVENTS_STREAM_MAXLEN: '1000'
+      WORKER_EVENTS_STREAM_MINID_DAYS: '30'
+      CATEGORIES_COLLECTION: conta_azul_categories
+      TENANT_DISCOVERY_MODE: scan
       CONTA_AZUL_CLIENT_ID: e2e-client-id
       CONTA_AZUL_CLIENT_SECRET: e2e-client-secret
     healthcheck:
       interval: 5s
       timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    build:
+      context: ../avcd-worker
+    depends_on:
+      mock-conta-azul:
+        condition: service_healthy
+      yoga-subgraph:
+        condition: service_healthy
+    ports: !override
+      - '0:8010'
+    environment:
+      ENABLE_DEV_RECONCILE_TRIGGER: 'true'
+      SCHEDULER_ENABLED: 'true'
+      RECONCILE_INTERVAL_SECONDS: '5'
+      YOGA_GRAPHQL_URL: http://yoga-subgraph:4000
+      CONTA_AZUL_SERVICE_JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhdmNkIiwiYXVkIjoiY29udGEtYXp1bC1zZXJ2aWNlIiwic3ViIjoiYXZjZC13b3JrZXIiLCJpYXQiOjE3ODIyNjQzMzEsImV4cCI6MjA5NzYyNDMzMX0.4k0Nk6BipZskdweXXgurKHpObsGg4ow45MkdnXMvCGo
+      REDIS_URL: redis://redis:6379
+      DEFAULT_DEV_TENANT_ID: dev-tenant
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8010/health']
+      interval: 5s
+      timeout: 5s
       retries: 10
       start_period: 15s

@@ -6,3 +6,7 @@ services:
       CONTA_AZUL_REDIRECT_URI: https://<tunnel-host>/callback
       # Must match web-dash ZITADEL_PROJECT_ID
       ZITADEL_PROJECT_ID: <your-zitadel-project-id>
+    # When Docker cannot resolve zitadel.avcd.ai (VPN/split-DNS), map it explicitly:
+    #   dig +short zitadel.avcd.ai   # run while on VPN
+    # extra_hosts:
+    #   - "zitadel.avcd.ai:<ip-from-dig>"

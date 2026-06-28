@@ -19,11 +19,20 @@ const categoryEntity: EntityDef = {
   key: { fields: 'id storeId' },
 }
 
+/** Non-worker-owned entity for cache refresh behavior tests. */
+const cachedSalesEntity: EntityDef = {
+  ...categoryEntity,
+  name: 'ContaAzulSale',
+  mongo: { collection: 'conta_azul_sales' },
+  rest: { adapter: 'contaAzul', list: 'listVendas' },
+  cache: { ttl: '24h' },
+}
+
 const isFresh = vi.fn()
 const writeMeta = vi.fn()
 const syncToMongo = vi.fn()
 const getRestAdapter = vi.fn()
-const listCategorias = vi.fn()
+const listVendas = vi.fn()
 
 vi.mock('../../../src/lib/cache/meta.js', () => ({
   metaKey: (collection: string, storeId: string) => `${collection}:${storeId}`,
@@ -56,14 +65,20 @@ describe('ensureFreshCache', () => {
     isFresh.mockResolvedValue(false)
     writeMeta.mockResolvedValue(new Date('2026-06-15T00:00:00.000Z'))
     syncToMongo.mockResolvedValue({ status: 'success', syncedCount: 2, syncedAt: '' })
-    listCategorias.mockResolvedValue([
-      { id: 'cat-1', nome: 'A', tipo: 'RECEITA' },
-      { id: 'cat-2', nome: 'B', tipo: 'DESPESA' },
+    listVendas.mockResolvedValue([
+      { id: 'sale-1', nome: 'A', tipo: 'RECEITA' },
+      { id: 'sale-2', nome: 'B', tipo: 'DESPESA' },
     ])
     getRestAdapter.mockReturnValue({
       listConnectedStoreIds: vi.fn().mockResolvedValue(['store-1']),
-      getClientForStore: vi.fn().mockResolvedValue({ listCategorias }),
+      getClientForStore: vi.fn().mockResolvedValue({ listVendas }),
     })
+  })
+
+  it('GivenWorkerOwnedCollection_WhenEnsuringFresh_ThenSkipsApiAndSync', async () => {
+    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    expect(getRestAdapter).not.toHaveBeenCalled()
+    expect(syncToMongo).not.toHaveBeenCalled()
   })
 
   it('GivenNoCacheDirective_WhenEnsuringFresh_ThenNoAdapterCalls', async () => {
@@ -81,18 +96,18 @@ describe('ensureFreshCache', () => {
 
   it('GivenFreshMeta_WhenEnsuringFresh_ThenSkipsApiAndSync', async () => {
     isFresh.mockResolvedValue(true)
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
-    expect(listCategorias).not.toHaveBeenCalled()
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    expect(listVendas).not.toHaveBeenCalled()
     expect(syncToMongo).not.toHaveBeenCalled()
     expect(writeMeta).not.toHaveBeenCalled()
   })
 
   it('GivenStaleMeta_WhenEnsuringFresh_ThenFetchesSyncsAndWritesMeta', async () => {
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
-    expect(listCategorias).toHaveBeenCalled()
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    expect(listVendas).toHaveBeenCalled()
     expect(syncToMongo).toHaveBeenCalled()
     expect(writeMeta).toHaveBeenCalledWith(
-      'conta_azul_categories:store-1',
+      'conta_azul_sales:store-1',
       86_400_000,
       expect.anything()
     )
@@ -103,7 +118,7 @@ describe('ensureFreshCache', () => {
       listConnectedStoreIds: vi.fn().mockResolvedValue(['store-1']),
       getClientForStore: vi.fn().mockResolvedValue(undefined),
     })
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
     expect(syncToMongo).not.toHaveBeenCalled()
     expect(writeMeta).not.toHaveBeenCalled()
   })
@@ -113,7 +128,7 @@ describe('ensureFreshCache', () => {
       listConnectedStoreIds: vi.fn().mockResolvedValue(['store-1']),
       getClientForStore: vi.fn().mockResolvedValue({}),
     })
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
     expect(syncToMongo).not.toHaveBeenCalled()
     expect(writeMeta).not.toHaveBeenCalled()
   })
@@ -125,27 +140,27 @@ describe('ensureFreshCache', () => {
       syncedAt: '',
       errorMessage: 'sync failed',
     })
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
     expect(writeMeta).not.toHaveBeenCalled()
   })
 
   it('GivenApiThrows_WhenEnsuringFresh_ThenDoesNotThrowOrWriteMeta', async () => {
-    listCategorias.mockRejectedValue(new Error('API down'))
+    listVendas.mockRejectedValue(new Error('API down'))
     await expect(
-      ensureFreshCache(categoryEntity, { storeIds: ['store-1'], db: createDb() })
+      ensureFreshCache(cachedSalesEntity, { storeIds: ['store-1'], db: createDb() })
     ).resolves.toBeUndefined()
     expect(writeMeta).not.toHaveBeenCalled()
   })
 
   it('GivenEmptyItems_WhenEnsuringFresh_ThenWritesMetaWithZeroCount', async () => {
-    listCategorias.mockResolvedValue([])
+    listVendas.mockResolvedValue([])
     syncToMongo.mockResolvedValue({ status: 'success', syncedCount: 0, syncedAt: '' })
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db: createDb() })
     expect(writeMeta).toHaveBeenCalled()
   })
 
   it('GivenTwoStaleStores_WhenEnsuringFresh_ThenRefreshesBoth', async () => {
-    await ensureFreshCache(categoryEntity, {
+    await ensureFreshCache(cachedSalesEntity, {
       tenantId,
       storeIds: ['store-1', 'store-2'],
       db: createDb(),
@@ -155,28 +170,28 @@ describe('ensureFreshCache', () => {
   })
 
   it('GivenNoStoreIds_WhenEnsuringFresh_ThenUsesAdapterListConnected', async () => {
-    await ensureFreshCache(categoryEntity, { tenantId, storeIds: [], db: createDb() })
+    await ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: [], db: createDb() })
     expect(getRestAdapter).toHaveBeenCalledWith('contaAzul')
     expect(syncToMongo).toHaveBeenCalled()
   })
 
   it('GivenConcurrentStaleSameStore_WhenEnsuringFresh_ThenSingleApiCall', async () => {
     let resolveFetch: ((value: unknown[]) => void) | undefined
-    listCategorias.mockImplementation(
+    listVendas.mockImplementation(
       () =>
         new Promise<unknown[]>((resolve) => {
           resolveFetch = resolve
         })
     )
     const db = createDb()
-    const p1 = ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db })
-    const p2 = ensureFreshCache(categoryEntity, { tenantId, storeIds: ['store-1'], db })
+    const p1 = ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db })
+    const p2 = ensureFreshCache(cachedSalesEntity, { tenantId, storeIds: ['store-1'], db })
 
     for (let i = 0; i < 50 && resolveFetch === undefined; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     resolveFetch?.([{ id: 'a', nome: 'A', tipo: 'RECEITA' }])
     await Promise.all([p1, p2])
-    expect(listCategorias).toHaveBeenCalledTimes(1)
+    expect(listVendas).toHaveBeenCalledTimes(1)
   }, 10_000)
 })

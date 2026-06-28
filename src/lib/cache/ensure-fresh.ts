@@ -7,6 +7,9 @@ import { isFresh, metaKey, writeMeta } from './meta.js'
 import { globalSingleflight } from './singleflight.js'
 import { parseTtl } from './ttl-parser.js'
 
+/** Collections synced via category reconcile — not REST cache refresh. */
+const CATEGORY_SYNC_COLLECTIONS = new Set(['conta_azul_categories'])
+
 export interface EnsureFreshCacheOptions {
   tenantId: string
   storeIds: string[]
@@ -118,6 +121,14 @@ export async function ensureFreshCache(
   entity: EntityDef,
   opts: EnsureFreshCacheOptions
 ): Promise<void> {
+  if (CATEGORY_SYNC_COLLECTIONS.has(entity.mongo.collection)) {
+    logCache('category_sync_skip', {
+      entity: entity.name,
+      collection: entity.mongo.collection,
+    })
+    return
+  }
+
   if (!entity.cache) {
     logCache('skip_no_cache_directive', { entity: entity.name })
     return

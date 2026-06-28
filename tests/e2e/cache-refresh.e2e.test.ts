@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { gqlRaw } from './helpers/gql-client.js'
-import {
-  clearStoreCategories,
-  expireCacheMeta,
-  seedStaleCategories,
-} from './helpers/mongo-e2e.js'
+import { clearStoreCategories, seedStaleCategories } from './helpers/mongo-e2e.js'
+import { triggerWorkerSyncForStore } from './helpers/worker-sync.js'
 import {
   getRequestCount,
   removePriorityStubs,
@@ -21,45 +18,34 @@ const CATEGORIES_QUERY = `
   }
 `
 
-describe('E2E: cache-aside categories', () => {
+describe('E2E: worker-owned categories read path', () => {
   afterEach(async () => {
     await removePriorityStubs()
   })
 
-  it('cold query fetches API, warm query skips API, expired TTL refetches', async () => {
+  it('GraphQL query reads Mongo synced by worker without yoga calling Conta Azul API', async () => {
     await clearStoreCategories('store-1')
     await resetWireMockRequests()
 
-    const cold = await gqlRaw(CATEGORIES_QUERY, {
+    await triggerWorkerSyncForStore('store-1', 2)
+
+    const beforeQueryCount = await getRequestCount('/v1/categorias')
+
+    const res = await gqlRaw(CATEGORIES_QUERY, {
       where: { storeId: { _eq: 'store-1' } },
     })
-    expect(cold.errors).toBeUndefined()
-    const coldNodes = (
-      cold.data as { contaAzulCategories: { nodes: unknown[]; totalCount: number } }
+    expect(res.errors).toBeUndefined()
+    const nodes = (
+      res.data as { contaAzulCategories: { nodes: unknown[]; totalCount: number } }
     ).contaAzulCategories
-    expect(coldNodes.totalCount).toBe(2)
-    expect(coldNodes.nodes).toHaveLength(2)
-    expect(await getRequestCount('/v1/categorias')).toBe(1)
+    expect(nodes.totalCount).toBe(2)
+    expect(nodes.nodes).toHaveLength(2)
 
-    const warm = await gqlRaw(CATEGORIES_QUERY, {
-      where: { storeId: { _eq: 'store-1' } },
-    })
-    expect(warm.errors).toBeUndefined()
-    expect(
-      (warm.data as { contaAzulCategories: { totalCount: number } }).contaAzulCategories
-        .totalCount
-    ).toBe(2)
-    expect(await getRequestCount('/v1/categorias')).toBe(1)
-
-    await expireCacheMeta('store-1')
-    const stale = await gqlRaw(CATEGORIES_QUERY, {
-      where: { storeId: { _eq: 'store-1' } },
-    })
-    expect(stale.errors).toBeUndefined()
-    expect(await getRequestCount('/v1/categorias')).toBe(2)
+    const afterQueryCount = await getRequestCount('/v1/categorias')
+    expect(afterQueryCount).toBe(beforeQueryCount)
   })
 
-  it('API failure serves stale Mongo when data exists', async () => {
+  it('serves existing Mongo data when Conta Azul API is unavailable', async () => {
     await seedStaleCategories('store-1')
     await resetWireMockRequests()
     await setWireMockStub('/v1/categorias', 500)

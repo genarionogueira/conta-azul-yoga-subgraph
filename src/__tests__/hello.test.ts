@@ -34,6 +34,7 @@ describe('schema', () => {
     const queryType = schema.getQueryType()
     expect(queryType?.getFields().contaAzulCategories).toBeDefined()
     expect(queryType?.getFields().contaAzulCategoriesAggregate).toBeDefined()
+    expect(queryType?.getFields().contaAzulWorkerSyncEvents).toBeDefined()
   })
 
   it('GivenUnknownField_WhenInspectingQueryType_ThenFieldIsUndefined', async () => {

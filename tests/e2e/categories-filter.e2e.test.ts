@@ -40,11 +40,13 @@ describe('E2E: Hasura filtering + MongoDB cache — categories domain', () => {
     expect(data.contaAzulCategories.nodes).toHaveLength(1)
   })
 
-  it('should sync from REST and return success result', async () => {
+  it('should return categories seeded by worker without manual sync mutation', async () => {
     const data = await gqlClient<{
-      syncContaAzulCategories: { syncedCount: number; status: string }
-    }>(`mutation { syncContaAzulCategories(storeId: "store-1") { syncedCount status } }`)
-    expect(data.syncContaAzulCategories.status).toBe('success')
-    expect(data.syncContaAzulCategories.syncedCount).toBeGreaterThan(0)
+      contaAzulCategories: { totalCount: number; nodes: unknown[] }
+    }>(
+      `query { contaAzulCategories(where: { ${SEEDED_STORES_WHERE} }) { totalCount nodes { id storeId } } }`
+    )
+    expect(data.contaAzulCategories.totalCount).toBeGreaterThan(0)
+    expect(data.contaAzulCategories.nodes.length).toBeGreaterThan(0)
   })
 })

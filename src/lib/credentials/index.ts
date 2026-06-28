@@ -1,8 +1,10 @@
 import { Redis } from 'ioredis'
 import { AuthConfig } from '../auth-config.js'
+import { ConnectionRepository } from '../connections/connection-repository.js'
+import { getDb } from '../mongo/connection.js'
 import { OAuthStateStore } from '../oauth-state.js'
+import { cleanupStoreData } from '../worker-client/cleanup-store-data.js'
 import { ConnectionService } from './connection-service.js'
-import { createCredentialsEventBus } from './event-bus.js'
 import { TenantTokenStore } from './tenant-token-store.js'
 
 export const authConfig = new AuthConfig()
@@ -22,13 +24,14 @@ export const tenantTokenStore = new TenantTokenStore(
   authConfig.getTokenUrl()
 )
 
-export const credentialsEventBus = createCredentialsEventBus(sharedRedis)
+export const connectionRepository = new ConnectionRepository(getDb)
 
 export const connectionService = new ConnectionService({
   authConfig,
   oauthStateStore,
   tokenStore: tenantTokenStore,
-  eventBus: credentialsEventBus,
+  connectionRepository,
+  storeDataCleaner: { cleanup: cleanupStoreData },
 })
 
 export async function disconnectCredentialsRedis(): Promise<void> {

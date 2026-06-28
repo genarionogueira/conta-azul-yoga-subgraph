@@ -57,6 +57,7 @@ help:
 dev:
 	@test -f $(COMPOSE_ENV_FILE) || (echo "❌ Copy config/local-env.example → $(COMPOSE_ENV_FILE) and fill values" && exit 1)
 	@test -f compose.override.local.yaml || (echo "❌ Copy compose.override.local.example.yaml → compose.override.local.yaml" && exit 1)
+	@chmod +x scripts/resolve-zitadel-host-ip.sh
 	@set -a; . ./$(COMPOSE_ENV_FILE); set +a; \
 	  test -n "$$CONTA_AZUL_CLIENT_ID" && test -n "$$CONTA_AZUL_CLIENT_SECRET" || \
 	  (echo "❌ Set CONTA_AZUL_CLIENT_ID and CONTA_AZUL_CLIENT_SECRET in $(COMPOSE_ENV_FILE)" && exit 1); \
@@ -77,13 +78,15 @@ dev:
 	  fi
 	@echo "Starting yoga-subgraph, avcd-worker, Redis, and Mongo..."
 	@set -a; . ./$(COMPOSE_ENV_FILE); set +a; \
+	  export ZITADEL_HOST_IP="$${ZITADEL_HOST_IP:-$$("./scripts/resolve-zitadel-host-ip.sh")}"; \
+	  echo "Using ZITADEL_HOST_IP=$$ZITADEL_HOST_IP for Docker extra_hosts (zitadel.avcd.ai)"; \
 	  if [ -z "$$CONTA_AZUL_SERVICE_JWT" ] && [ -n "$$JWT_SECRET" ]; then \
 	    export CONTA_AZUL_SERVICE_JWT=$$(node scripts/generate-worker-jwt.mjs); \
 	    echo "ℹ️  Generated CONTA_AZUL_SERVICE_JWT for worker (add to $(COMPOSE_ENV_FILE) to persist)"; \
 	  elif [ -z "$$CONTA_AZUL_SERVICE_JWT" ]; then \
 	    echo "⚠️  CONTA_AZUL_SERVICE_JWT unset — worker reconcile/cleanup GraphQL will fail until set"; \
 	  fi; \
-	  $(COMPOSE) --env-file $(COMPOSE_ENV_FILE) $(COMPOSE_LOCAL) up --build -d --remove-orphans
+	  ZITADEL_HOST_IP="$$ZITADEL_HOST_IP" $(COMPOSE) --env-file $(COMPOSE_ENV_FILE) $(COMPOSE_LOCAL) up --build -d --remove-orphans
 	@chmod +x scripts/local-mongo-compass.sh
 	@MONGO_SKIP_UP=1 COMPASS_SOFT_FAIL=1 ./scripts/local-mongo-compass.sh
 	@set -a; . ./$(COMPOSE_ENV_FILE); set +a; \

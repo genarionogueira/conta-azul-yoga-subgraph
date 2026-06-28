@@ -1,9 +1,14 @@
 import type { JWTPayload } from 'jose'
 import type { AppContext } from '../../context.js'
 import { loadAuthSettings } from './settings.js'
+import { isWorkerAuth } from './worker-auth.js'
 
 export const ZITADEL_ORG_CLAIM = 'urn:zitadel:iam:org:id'
+/** Present on Zitadel JWT access tokens when `urn:zitadel:iam:org:id:{orgId}` scope is requested. */
+export const ZITADEL_RESOURCE_OWNER_CLAIM = 'urn:zitadel:iam:user:resourceowner:id'
 export const DEFAULT_DEV_TENANT_ID = process.env.DEFAULT_DEV_TENANT_ID?.trim() || 'dev-tenant'
+/** Sentinel tenant for avcd-worker service JWT — not a real tenant; mutations use explicit tenantId args. */
+export const WORKER_CONTEXT_TENANT_ID = '__worker__'
 
 export class TenantRequiredError extends Error {
   constructor(message = 'Tenant context is required') {
@@ -32,6 +37,11 @@ export function extractTenantId(payload: JWTPayload | undefined): string | undef
     return zitadelOrg.trim()
   }
 
+  const resourceOwner = payload[ZITADEL_RESOURCE_OWNER_CLAIM]
+  if (typeof resourceOwner === 'string' && resourceOwner.trim()) {
+    return resourceOwner.trim()
+  }
+
   if (envFlag('ALLOW_SUB_AS_TENANT') || !loadAuthSettings().jwtRequired) {
     const sub = payload.sub
     if (typeof sub === 'string' && sub.trim()) {
@@ -46,6 +56,9 @@ export function resolveTenantId(
   authClaims: JWTPayload | undefined,
   jwtRequired = loadAuthSettings().jwtRequired
 ): string {
+  if (isWorkerAuth(authClaims)) {
+    return WORKER_CONTEXT_TENANT_ID
+  }
   const fromClaims = extractTenantId(authClaims)
   if (fromClaims) return fromClaims
   if (!jwtRequired) return DEFAULT_DEV_TENANT_ID

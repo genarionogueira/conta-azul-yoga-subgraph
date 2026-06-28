@@ -63,19 +63,36 @@ make validate-secrets
 
 **Redis note:** Yoga uses `plain:{json}` tokens. Use db index `2` and re-OAuth stores via `setupConnection` after cutover.
 
-### 4. Keycloak audience
+### 4. Keycloak audience (legacy — dev uses Zitadel)
 
-Apply keycloak-config stack (CI) so M2M client `avcd-conta-azul-api` includes audience:
+Dev deploy sets `KEYCLOAK_ENABLED: "false"` and `JWT_REQUIRED: "true"` with Zitadel JWKS. Keycloak M2M is **not** the active auth path for dev. Browser tokens come from web-dash → Zitadel.
 
-`https://dev.avocado.tech/conta-azul-yoga-subgraph`
+If you need Keycloak M2M for a legacy environment, apply keycloak-config so client `avcd-conta-azul-api` includes audience `https://dev.avocado.tech/conta-azul-yoga-subgraph`.
 
-```bash
-gh workflow run pulumi-keycloak-config.yml \
-  -R Avocado-Technology/pulumi-infra \
-  -f command=up
+### 5. avcd-worker (internal)
+
+After deploying **avcd-worker** on `avcd_edge`, Kamal sets:
+
+```yaml
+WORKER_URL: http://avcd-worker-web:8010
+WORKER_EVENTS_ENABLED: "true"
 ```
 
-### 5. GitHub `development` environment
+Deploy worker **before** redeploying yoga when enabling category sync / worker log subscriptions.
+
+Verify worker from droplet:
+
+```bash
+bash ../avcd-worker/tests/e2e/verify-worker-deploy.sh
+```
+
+Post-deploy yoga verification:
+
+```bash
+bash tests/e2e/verify-yoga-deploy.sh
+```
+
+### 6. GitHub `development` environment
 
 ```bash
 cp config/github-env.example config/github-env.local
@@ -89,7 +106,7 @@ Required **vars**: `INFISICAL_*`, `DO_DEPLOY_HOST`, `DO_PUBLIC_HOST`
 
 Required **secret**: `DO_DEPLOY_SSH_KEY` (deploy user SSH key)
 
-### 6. Deploy (CI)
+### 7. Deploy (CI)
 
 First run (creates Kamal hooks on droplet):
 

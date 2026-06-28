@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { Redis } from 'ioredis'
 import { gqlRaw } from './helpers/gql-client.js'
 import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
+import { triggerWorkerSyncForStore } from './helpers/worker-sync.js'
 
 const TEST_TOKEN = {
   access_token: 'test-access-token',
@@ -62,12 +63,14 @@ describe('E2E: contaAzulCategories diagnostics', () => {
     )
   })
 
-  it('GivenTokenWithoutPriorSync_WhenQuerying_ThenAutoRefreshesAndReturnsData', async () => {
+  it('GivenTokenWithoutPriorSync_WhenWorkerReconciles_ThenQueryReturnsData', async () => {
     const redis = new Redis(getRedisUrl())
     const tokenValue = `plain:${JSON.stringify(TEST_TOKEN)}`
     await redis.set(tokenKey('unsynced-store'), tokenValue)
     await redis.zadd(CONNECTED_STORES_KEY, TEST_TOKEN.connected_at, 'unsynced-store')
     await redis.quit()
+
+    await triggerWorkerSyncForStore('unsynced-store', 2)
 
     const res = await gqlRaw(QUERY_WITH_DIAGNOSTICS, {
       where: { storeId: { _eq: 'unsynced-store' } },

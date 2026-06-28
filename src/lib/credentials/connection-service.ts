@@ -1,8 +1,9 @@
 import { AuthConfig, AuthConfigError } from '../auth-config.js'
 import { buildAuthorizationUrl, exchangeAuthorizationCode } from '../conta-azul-oauth.js'
 import { createContaAzulClient, type ContaAzulClient } from '../conta-azul-client.js'
+import type { ConnectionRepository } from '../connections/connection-repository.js'
+import type { ConnectionListItem } from '../connections/types.js'
 import type { OAuthStateStore } from '../oauth-state.js'
-import type { CredentialsEventBus } from './event-bus.js'
 import { validateStoreId } from './store-id.js'
 import {
   TenantTokenStore,
@@ -28,7 +29,10 @@ export interface ConnectionServiceDeps {
   authConfig: AuthConfig
   oauthStateStore: OAuthStateStore
   tokenStore: TenantTokenStore
-  eventBus: CredentialsEventBus
+  connectionRepository: ConnectionRepository
+  storeDataCleaner: {
+    cleanup(tenantId: string, storeId: string): Promise<void>
+  }
 }
 
 function auditActor(claims?: Record<string, unknown>): string {
@@ -75,7 +79,8 @@ export class ConnectionService {
     storeId: string,
     code: string,
     state: string,
-    authClaims?: Record<string, unknown>
+    authClaims?: Record<string, unknown>,
+    name?: string
   ): Promise<CompleteConnectResult> {
     const validStoreId = validateStoreId(storeId)
     const payload = await this.deps.oauthStateStore.consumeState(state)
@@ -87,12 +92,20 @@ export class ConnectionService {
       }
     }
 
-    return this.exchangeAndSave(tenantId, validStoreId, code, payload.returnUrl, authClaims)
+    return this.exchangeAndSave(
+      tenantId,
+      validStoreId,
+      code,
+      payload.returnUrl,
+      authClaims,
+      name
+    )
   }
 
   async completeConnectFromCallback(
     code: string,
-    state: string
+    state: string,
+    name?: string
   ): Promise<CompleteConnectResult> {
     const payload = await this.deps.oauthStateStore.consumeState(state)
     if (!payload) {
@@ -107,7 +120,9 @@ export class ConnectionService {
       payload.tenantId,
       payload.storeId,
       code,
-      payload.returnUrl
+      payload.returnUrl,
+      undefined,
+      name
     )
   }
 
@@ -115,7 +130,8 @@ export class ConnectionService {
     tenantId: string,
     code: string,
     state: string,
-    authClaims?: Record<string, unknown>
+    authClaims?: Record<string, unknown>,
+    name?: string
   ): Promise<CompleteConnectResult> {
     const payload = await this.deps.oauthStateStore.consumeState(state)
     if (!payload || payload.tenantId !== tenantId) {
@@ -131,7 +147,8 @@ export class ConnectionService {
       payload.storeId,
       code,
       payload.returnUrl,
-      authClaims
+      authClaims,
+      name
     )
   }
 
@@ -145,8 +162,8 @@ export class ConnectionService {
       `[credentials] disconnect tenant=${tenantId} store=${validStoreId} actor=${auditActor(authClaims)}`
     )
 
-    const deleted = await this.deps.tokenStore.deleteConnection(tenantId, validStoreId)
-    if (!deleted) {
+    const token = await this.deps.tokenStore.getToken(tenantId, validStoreId)
+    if (!token) {
       return {
         success: false,
         storeId: validStoreId,
@@ -154,18 +171,97 @@ export class ConnectionService {
       }
     }
 
-    await this.deps.eventBus.publish({
-      type: 'store.disconnected',
-      tenantId,
-      storeId: validStoreId,
-      at: new Date().toISOString(),
-    })
+    let cleanupError: string | null = null
+    try {
+      await this.deps.storeDataCleaner.cleanup(tenantId, validStoreId)
+    } catch (err) {
+      cleanupError = err instanceof Error ? err.message : 'Unknown error'
+      console.warn(
+        `[credentials] disconnect cleanup failed tenant=${tenantId} store=${validStoreId}: ${cleanupError}`
+      )
+    }
 
-    return { success: true, storeId: validStoreId, error: null }
+    await this.deps.tokenStore.deleteConnection(tenantId, validStoreId)
+    await this.deps.connectionRepository.delete(tenantId, validStoreId)
+
+    return {
+      success: true,
+      storeId: validStoreId,
+      error: cleanupError,
+    }
   }
 
   async listConnected(tenantId: string): Promise<ConnectedStoreRecord[]> {
     return this.deps.tokenStore.listConnectedStores(tenantId)
+  }
+
+  async updateConnection(
+    tenantId: string,
+    id: string,
+    name: string
+  ): Promise<{ success: boolean; id: string; name: string | null; error: string | null }> {
+    const validStoreId = validateStoreId(id)
+    const token = await this.deps.tokenStore.getToken(tenantId, validStoreId)
+    if (!token) {
+      return {
+        success: false,
+        id: validStoreId,
+        name: null,
+        error: `Store ${validStoreId} is not connected`,
+      }
+    }
+
+    const displayName = name.trim() || validStoreId
+    await this.deps.connectionRepository.upsert(tenantId, validStoreId, name)
+
+    return {
+      success: true,
+      id: validStoreId,
+      name: displayName,
+      error: null,
+    }
+  }
+
+  async listConnections(tenantId: string): Promise<ConnectionListItem[]> {
+    const storeIds = await this.deps.tokenStore.listConnectedStoreIds(tenantId)
+    const mongoDocs = await this.deps.connectionRepository.listByTenant(tenantId)
+    const docById = new Map(mongoDocs.map((doc) => [doc.id, doc]))
+    const connectedIdSet = new Set(storeIds)
+
+    for (const doc of mongoDocs) {
+      if (!connectedIdSet.has(doc.id)) {
+        await this.deps.connectionRepository.delete(tenantId, doc.id)
+      }
+    }
+
+    const results: ConnectionListItem[] = []
+    for (const storeId of storeIds) {
+      const token = await this.deps.tokenStore.getToken(tenantId, storeId)
+      if (!token) {
+        continue
+      }
+
+      let doc = docById.get(storeId)
+      if (!doc) {
+        await this.deps.connectionRepository.upsert(tenantId, storeId, storeId)
+        doc = {
+          tenantId,
+          id: storeId,
+          name: storeId,
+          connectedAt: token.connected_at ? new Date(token.connected_at) : new Date(),
+          updatedAt: new Date(),
+        }
+      }
+
+      results.push({
+        id: storeId,
+        name: doc.name,
+        connectedAt: doc.connectedAt.toISOString(),
+        isConnected: true,
+      })
+    }
+
+    return results.sort((a, b) => a.id.localeCompare(b.id))
   }
 
   async getStatus(tenantId: string, storeId: string): Promise<ConnectionStatusResult> {
@@ -224,7 +320,8 @@ export class ConnectionService {
     storeId: string,
     code: string,
     returnUrl?: string,
-    authClaims?: Record<string, unknown>
+    authClaims?: Record<string, unknown>,
+    name?: string
   ): Promise<CompleteConnectResult> {
     try {
       const redirectUri = this.deps.authConfig.requireRedirectUri()
@@ -241,17 +338,11 @@ export class ConnectionService {
         connected_at: Date.now(),
       }
       await this.deps.tokenStore.saveConnection(tenantId, storeId, stored)
+      await this.deps.connectionRepository.upsert(tenantId, storeId, name ?? storeId)
 
       console.info(
         `[credentials] connect tenant=${tenantId} store=${storeId} actor=${auditActor(authClaims)}`
       )
-
-      await this.deps.eventBus.publish({
-        type: 'store.connected',
-        tenantId,
-        storeId,
-        at: new Date().toISOString(),
-      })
 
       return { success: true, storeId, returnUrl }
     } catch (err) {

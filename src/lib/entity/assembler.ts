@@ -110,6 +110,10 @@ function mergeResolvers(
     if (block.Mutation) {
       Object.assign(merged.Mutation as object, block.Mutation)
     }
+    if (block.Subscription) {
+      merged.Subscription ??= {}
+      Object.assign(merged.Subscription as object, block.Subscription)
+    }
   }
 
   if (manual.Query) {
@@ -117,6 +121,10 @@ function mergeResolvers(
   }
   if (manual.Mutation) {
     Object.assign(merged.Mutation as object, manual.Mutation)
+  }
+  if (manual.Subscription) {
+    merged.Subscription ??= {}
+    Object.assign(merged.Subscription as object, manual.Subscription)
   }
 
   return merged
@@ -155,10 +163,29 @@ export async function buildEntitySchema(
   const { contaAzulAuthConfig } = await import('../../schema/auth/resolvers/Query/contaAzulAuthConfig.js')
   const { connectionStatus } = await import('../../schema/auth/resolvers/Query/connectionStatus.js')
   const { connectedStores } = await import('../../schema/auth/resolvers/Query/connectedStores.js')
+  const { connections } = await import('../../schema/auth/resolvers/Query/connections.js')
   const { hello } = await import('../../schema/hello/resolvers/Query/hello.js')
+  const { contaAzulWorkerSyncEvents } = await import(
+    '../../schema/worker-events/resolvers/Query/contaAzulWorkerSyncEvents.js'
+  )
+  const {
+    contaAzulWorkerSyncEventsSubscription,
+    contaAzulWorkerSyncEventsSubscriptionResolve,
+  } = await import(
+    '../../schema/worker-events/resolvers/Subscription/contaAzulWorkerSyncEvents.js'
+  )
   const { setupConnection } = await import('../../schema/auth/resolvers/Mutation/setupConnection.js')
   const { completeOAuthCallback } = await import('../../schema/auth/resolvers/Mutation/completeOAuthCallback.js')
   const { disconnectStore } = await import('../../schema/auth/resolvers/Mutation/disconnectStore.js')
+  const { updateConnection } = await import('../../schema/auth/resolvers/Mutation/updateConnection.js')
+  const { syncContaAzulCategories } = await import(
+    '../../schema/categories/resolvers/Mutation/syncContaAzulCategories.js'
+  )
+  const {
+    reconcileStore,
+    reconcileAll,
+    disconnectStoreData,
+  } = await import('../../schema/sync/resolvers/Mutation/syncMutations.js')
 
   const manualResolvers: GraphQLResolverMap<unknown> = {
     Query: {
@@ -166,12 +193,28 @@ export async function buildEntitySchema(
       contaAzulAuthConfig: bindAppContextResolver(contaAzulAuthConfig),
       connectionStatus: bindAppContextResolver(connectionStatus),
       connectedStores: bindAppContextResolver(connectedStores),
+      connections: bindAppContextResolver(connections),
+      contaAzulWorkerSyncEvents: bindAppContextResolver(contaAzulWorkerSyncEvents),
       hello,
     },
     Mutation: {
       setupConnection: bindAppContextResolver(setupConnection),
       completeOAuthCallback: bindAppContextResolver(completeOAuthCallback),
       disconnectStore: bindAppContextResolver(disconnectStore),
+      updateConnection: bindAppContextResolver(updateConnection),
+      syncContaAzulCategories: bindAppContextResolver(syncContaAzulCategories),
+      reconcileStore: bindAppContextResolver(reconcileStore),
+      reconcileAll: bindAppContextResolver(reconcileAll),
+      disconnectStoreData: bindAppContextResolver(disconnectStoreData),
+    },
+    Subscription: {
+      contaAzulWorkerSyncEvents: {
+        subscribe: bindAppContextResolver(contaAzulWorkerSyncEventsSubscription),
+        resolve: (event: unknown) =>
+          contaAzulWorkerSyncEventsSubscriptionResolve(
+            event as Parameters<typeof contaAzulWorkerSyncEventsSubscriptionResolve>[0]
+          ),
+      },
     },
   }
 

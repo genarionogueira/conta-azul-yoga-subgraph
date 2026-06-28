@@ -1,0 +1,35 @@
+type ReconcileStoreResult {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type ReconcileAllStoreResult {
+  tenantId: String!
+  storeId: String!
+  status: String!
+  syncedCount: Int!
+  skippedCount: Int!
+  errorMessage: String
+}
+
+type ReconcileAllResult {
+  status: String!
+  syncedCount: Int!
+  storesProcessed: Int!
+  successCount: Int!
+  errorCount: Int!
+  storeResults: [ReconcileAllStoreResult!]!
+}
+
+type DisconnectStoreDataResult {
+  storeId: String!
+  deleted: Int!
+}
+
+extend type Mutation {
+  reconcileStore(storeId: String!, tenantId: String!, trigger: String): ReconcileStoreResult!
+  reconcileAll(trigger: String! = "scheduled"): ReconcileAllResult!
+  disconnectStoreData(storeId: String!, tenantId: String!): DisconnectStoreDataResult!
+}
