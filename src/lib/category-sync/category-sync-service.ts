@@ -1,7 +1,8 @@
 import type { Redis } from 'ioredis'
 import type { Db } from 'mongodb'
 import type { ConnectionRepository } from '../connections/connection-repository.js'
-import { createContaAzulClient } from '../conta-azul-client.js'
+import { createLimitedContaAzulClient } from '../conta-azul-api/client-factory.js'
+import { ContaAzulRateLimitError } from '../conta-azul-api/errors.js'
 import {
   TenantTokenStore,
   TokenNotFoundError,
@@ -14,6 +15,7 @@ import {
   type SyncEventPublisher,
 } from './sync-event-publisher.js'
 import { listConnectedStoreIdsForTenant, listTenantIds } from './tenant-discovery.js'
+import { isStoreDisconnectInProgress } from '../sync/store-sync-job-service.js'
 import type {
   DisconnectStoreDataResult,
   ReconcileAllResult,
@@ -69,7 +71,12 @@ export class CategorySyncService {
 
     try {
       const token = await this.tokenStore.ensureFreshToken(tenantId, storeId)
-      const client = createContaAzulClient(token.access_token)
+      const client = createLimitedContaAzulClient(
+        this.redis,
+        token.access_token,
+        tenantId,
+        storeId
+      )
       const rawCategories = await client.listCategorias()
       const items = rawCategories
         .map(normalizeCategory)
@@ -80,7 +87,11 @@ export class CategorySyncService {
         categoriesCollectionName(),
         tenantId,
         storeId,
-        items
+        items,
+        this.connectionRepository
+          ? (await this.connectionRepository.findActiveByStoreId(tenantId, storeId))
+              ?.connectionId
+          : undefined
       )
 
       const result: SyncResult = {
@@ -109,6 +120,9 @@ export class CategorySyncService {
           deleted: 0,
           errors: ['token_not_found'],
         }
+      }
+      if (err instanceof ContaAzulRateLimitError) {
+        throw err
       }
 
       const message = err instanceof Error ? err.message : String(err)
@@ -246,6 +260,9 @@ export class CategorySyncService {
         defaultDevTenantId()
       )
       for (const storeId of storeIds) {
+        if (await isStoreDisconnectInProgress(tenantId, storeId)) {
+          continue
+        }
         const result = await this.reconcileStore(tenantId, storeId, trigger)
         storeResults.push(result)
         if (result.status === 'success') {
@@ -295,8 +312,6 @@ export class CategorySyncService {
     const result = await col.deleteMany({ tenantId, storeId })
     const metaId = `${collectionName}:${storeId}`
     await db.collection<CacheMetaDocument>(META_COLLECTION).deleteOne({ _id: metaId })
-    await this.tokenStore.deleteConnection(tenantId, storeId)
-    await this.connectionRepository?.delete(tenantId, storeId)
 
     await this.publishEvent({
       type: 'store.data_deleted',
@@ -309,5 +324,9 @@ export class CategorySyncService {
       storeId,
       deleted: result.deletedCount,
     }
+  }
+
+  async deleteStoreCategories(tenantId: string, storeId: string): Promise<number> {
+    return (await this.disconnectStoreData(tenantId, storeId)).deleted
   }
 }

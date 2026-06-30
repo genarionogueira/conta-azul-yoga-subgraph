@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { gqlRaw } from './helpers/gql-client.js'
-import { countStoreCategories, storeCacheMetaExists } from './helpers/worker-sync.js'
+import { disconnectStoreFully, waitForStoreSyncJobComplete } from './helpers/worker-sync.js'
 
 const AUTH_STORE_ID = 'store-oauth'
 const CATEGORIES_QUERY = '{ contaAzulCategories { nodes { storeId id nome tipo } } }'
@@ -111,6 +111,7 @@ describe('E2E: connections registry', () => {
     '{ connections { id name isConnected connectedAt } }'
 
   it('GivenSetupConnectionWithName_WhenQueryConnections_ThenReturnsIdAndName', async () => {
+    await disconnectStoreFully(AUTH_STORE_ID)
     const authRes = await gqlRaw(
       `{ authorizationUrl(storeId: "${CONNECTIONS_STORE_ID}") { state } }`
     )
@@ -166,6 +167,7 @@ describe('E2E: connections registry', () => {
   })
 
   it('GivenConnectedStore_WhenUpdateConnection_ThenConnectionsReturnsNewName', async () => {
+    await disconnectStoreFully(CONNECTIONS_STORE_ID)
     const RENAME_STORE_ID = 'store-conn-rename'
     const authRes = await gqlRaw(
       `{ authorizationUrl(storeId: "${RENAME_STORE_ID}") { state } }`
@@ -226,7 +228,8 @@ describe('E2E: connections registry', () => {
     expect(match?.name).toBe('Renamed Store')
   })
 
-  it('GivenDisconnectedStore_WhenQueryConnections_ThenStoreAbsent', async () => {
+  it('GivenDisconnectedStore_WhenQueryConnections_ThenRowIsDisconnectedNotConnected', async () => {
+    await disconnectStoreFully('store-conn-rename')
     const authRes = await gqlRaw(
       `{ authorizationUrl(storeId: "${DISCONNECT_REGISTRY_STORE_ID}") { state } }`
     )
@@ -253,23 +256,30 @@ describe('E2E: connections registry', () => {
       `mutation {
         disconnectStore(storeId: "${DISCONNECT_REGISTRY_STORE_ID}") {
           success
+          jobId
         }
       }`
     )
     expect(disconnectRes.errors).toBeUndefined()
     const disconnect = (
-      disconnectRes.data as { disconnectStore: { success: boolean } }
+      disconnectRes.data as { disconnectStore: { success: boolean; jobId: string } }
     ).disconnectStore
     expect(disconnect.success).toBe(true)
+    await waitForStoreSyncJobComplete(disconnect.jobId)
 
-    const listRes = await gqlRaw(CONNECTIONS_QUERY)
+    const listRes = await gqlRaw(
+      `{ connections { id status isConnected } }`
+    )
     expect(listRes.errors).toBeUndefined()
     const connections = (
-      listRes.data as { connections: Array<{ id: string }> }
+      listRes.data as {
+        connections: Array<{ id: string; status: string; isConnected: boolean }>
+      }
     ).connections
-    expect(connections.some((row) => row.id === DISCONNECT_REGISTRY_STORE_ID)).toBe(
-      false
-    )
+    const row = connections.find((r) => r.id === DISCONNECT_REGISTRY_STORE_ID)
+    expect(row).toBeTruthy()
+    expect(row?.status).toBe('DISCONNECTED')
+    expect(row?.isConnected).toBe(false)
   })
 })
 
@@ -303,12 +313,58 @@ describe('E2E: connection rename', () => {
 })
 
 describe('E2E: OAuth connect flow (continued)', () => {
-  it('GivenConnectedStore_WhenDisconnectStore_ThenRemovesFromConnectedStores', async () => {
+  it(
+    'GivenConnectedStore_WhenDisconnectStore_ThenSoftDisconnectRetainsSyncedData',
+    async () => {
+    for (const storeId of [
+      'store-conn-name',
+      'store-conn-rename',
+      'store-conn-disconnect',
+    ]) {
+      await disconnectStoreFully(storeId)
+    }
+
+    const authRes = await gqlRaw(
+      `{ authorizationUrl(storeId: "${AUTH_STORE_ID}") { state } }`
+    )
+    expect(authRes.errors).toBeUndefined()
+    const { state } = (
+      authRes.data as { authorizationUrl: { state: string } }
+    ).authorizationUrl
+
+    const setupRes = await gqlRaw(
+      `mutation {
+        setupConnection(storeId: "${AUTH_STORE_ID}", code: "e2e-auth-code", state: "${state}") {
+          success
+          error
+        }
+      }`
+    )
+    expect(setupRes.errors).toBeUndefined()
+    const setup = (
+      setupRes.data as { setupConnection: { success: boolean; error: string | null } }
+    ).setupConnection
+    expect(setup.success).toBe(true)
+
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      const catsRes = await gqlRaw(CATEGORIES_QUERY)
+      expect(catsRes.errors).toBeUndefined()
+      const count = (
+        catsRes.data as {
+          contaAzulCategories: { nodes: Array<{ storeId: string }> }
+        }
+      ).contaAzulCategories.nodes.filter((c) => c.storeId === AUTH_STORE_ID).length
+      if (count >= 2) break
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
     const disconnectRes = await gqlRaw(
       `mutation {
         disconnectStore(storeId: "${AUTH_STORE_ID}") {
           success
           storeId
+          jobId
           error
         }
       }`
@@ -316,11 +372,17 @@ describe('E2E: OAuth connect flow (continued)', () => {
     expect(disconnectRes.errors).toBeUndefined()
     const disconnect = (
       disconnectRes.data as {
-        disconnectStore: { success: boolean; storeId: string; error: string | null }
+        disconnectStore: {
+          success: boolean
+          storeId: string
+          jobId: string
+          error: string | null
+        }
       }
     ).disconnectStore
     expect(disconnect.success).toBe(true)
     expect(disconnect.storeId).toBe(AUTH_STORE_ID)
+    await waitForStoreSyncJobComplete(disconnect.jobId)
 
     const listRes = await gqlRaw(`{ connectedStores { storeId isConnected } }`)
     expect(listRes.errors).toBeUndefined()
@@ -336,9 +398,6 @@ describe('E2E: OAuth connect flow (continued)', () => {
     ).connectionStatus
     expect(status.isConnected).toBe(false)
 
-    expect(await countStoreCategories(AUTH_STORE_ID)).toBe(0)
-    expect(await storeCacheMetaExists(AUTH_STORE_ID)).toBe(false)
-
     const catsRes = await gqlRaw(CATEGORIES_QUERY)
     expect(catsRes.errors).toBeUndefined()
     const remaining = (
@@ -346,6 +405,20 @@ describe('E2E: OAuth connect flow (continued)', () => {
         contaAzulCategories: { nodes: Array<{ storeId: string }> }
       }
     ).contaAzulCategories.nodes.filter((c) => c.storeId === AUTH_STORE_ID)
-    expect(remaining).toHaveLength(0)
-  })
+    expect(remaining.length).toBeGreaterThanOrEqual(2)
+
+    const connRes = await gqlRaw(
+      `{ connections { id status isConnected } }`
+    )
+    expect(connRes.errors).toBeUndefined()
+    const row = (
+      connRes.data as {
+        connections: Array<{ id: string; status: string; isConnected: boolean }>
+      }
+    ).connections.find((c) => c.id === AUTH_STORE_ID)
+    expect(row?.status).toBe('DISCONNECTED')
+    expect(row?.isConnected).toBe(false)
+  },
+    120_000
+  )
 })

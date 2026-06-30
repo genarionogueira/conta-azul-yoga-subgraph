@@ -5,6 +5,91 @@ info:
 servers:
   - url: https://api-v2.contaazul.com
 paths:
+  /v1/venda/busca:
+    get:
+      operationId: listVendas
+      summary: Search sales within a date range
+      parameters:
+        - name: data_inicio
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: data_fim
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: tamanho_pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Paginated sales search result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendasPaginated"
+  /v1/venda/{id_venda}/itens:
+    get:
+      operationId: listVendaItens
+      summary: List line items for a sale
+      parameters:
+        - name: id_venda
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: tamanho_pagina
+          in: query
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100, 200, 500, 1000]
+      responses:
+        "200":
+          description: Paginated sale line items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendaItensPaginated"
+  /v1/venda/vendedores:
+    get:
+      operationId: listVendedores
+      summary: List salespeople
+      parameters:
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: tamanho_pagina
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Paginated salespeople
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendedoresPaginated"
   /v1/categorias:
     get:
       operationId: listCategorias
@@ -32,8 +117,116 @@ paths:
                     items:
                       $ref: "#/components/schemas/Categoria"
                   - $ref: "#/components/schemas/CategoriasPaginated"
+  /v1/pessoas/conta-conectada:
+    get:
+      operationId: getContaConectada
+      summary: Returns the connected Conta Azul company account
+      responses:
+        "200":
+          description: Connected company profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContaConectada"
 components:
   schemas:
+    VendaSituacao:
+      type: object
+      properties:
+        nome:
+          type: string
+        descricao:
+          type: string
+    VendaCliente:
+      type: object
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+    VendaItem:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        numero:
+          type: integer
+        data:
+          type: string
+        data_alteracao:
+          type: string
+        tipo:
+          type: string
+        situacao:
+          $ref: "#/components/schemas/VendaSituacao"
+        cliente:
+          $ref: "#/components/schemas/VendaCliente"
+        origem:
+          type: string
+    VendasPaginated:
+      type: object
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendaItem"
+        totais:
+          type: object
+          additionalProperties: true
+    VendaLinhaItem:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        id_item:
+          type: string
+        nome:
+          type: string
+        descricao:
+          type: string
+        tipo:
+          type: string
+        quantidade:
+          type: number
+        valor:
+          type: number
+        custo:
+          type: number
+    VendaItensPaginated:
+      type: object
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendaLinhaItem"
+        itens_totais:
+          type: integer
+        totais:
+          type: object
+          additionalProperties: true
+    VendedorItem:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        email:
+          type: string
+        ativo:
+          type: boolean
+    VendedoresPaginated:
+      type: object
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendedorItem"
+        itens_totais:
+          type: integer
     Categoria:
       type: object
       required: [id, nome, tipo]
@@ -53,3 +246,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Categoria"
+    ContaConectada:
+      type: object
+      required: [id, nome, documento]
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        documento:
+          type: string
+          description: CNPJ or CPF of the connected company

@@ -1,10 +1,14 @@
 import { AuthConfig, AuthConfigError } from '../auth-config.js'
 import { buildAuthorizationUrl, exchangeAuthorizationCode } from '../conta-azul-oauth.js'
-import { createContaAzulClient, type ContaAzulClient } from '../conta-azul-client.js'
+import { createContaAzulClient, fetchConnectedAccount, type ContaAzulClient } from '../conta-azul-client.js'
 import type { ConnectionRepository } from '../connections/connection-repository.js'
 import type { ConnectionListItem } from '../connections/types.js'
+import { resolveStoreId } from '../connections/types.js'
 import type { OAuthStateStore } from '../oauth-state.js'
 import { validateStoreId } from './store-id.js'
+import { enqueueStoreReconcileJob, enqueueStoreDisconnectJob } from '../sync/store-sync-job-service.js'
+import type { SyncMode } from '../jobs/job-stream.js'
+import { createRedisClient } from '../redis/create-redis-client.js'
 import {
   TenantTokenStore,
   type ConnectedStoreRecord,
@@ -14,7 +18,7 @@ import {
 export type StartConnectResult = { storeId: string; url: string; state: string }
 
 export type CompleteConnectResult =
-  | { success: true; storeId: string; returnUrl?: string }
+  | { success: true; storeId: string; jobId: string; returnUrl?: string }
   | { success: false; storeId: string; error: string; returnUrl?: string }
 
 export interface ConnectionStatusResult {
@@ -30,9 +34,6 @@ export interface ConnectionServiceDeps {
   oauthStateStore: OAuthStateStore
   tokenStore: TenantTokenStore
   connectionRepository: ConnectionRepository
-  storeDataCleaner: {
-    cleanup(tenantId: string, storeId: string): Promise<void>
-  }
 }
 
 function auditActor(claims?: Record<string, unknown>): string {
@@ -98,7 +99,8 @@ export class ConnectionService {
       code,
       payload.returnUrl,
       authClaims,
-      name
+      name,
+      state
     )
   }
 
@@ -109,6 +111,13 @@ export class ConnectionService {
   ): Promise<CompleteConnectResult> {
     const payload = await this.deps.oauthStateStore.consumeState(state)
     if (!payload) {
+      // The callback is single-use, but browsers re-request it (refresh, back
+      // button, link prefetch). If this exact state already completed a connect,
+      // replay that result so the user is redirected back instead of seeing an
+      // "Invalid or expired OAuth state" dead end.
+      const replay = await this.resolveReplay(state)
+      if (replay) return replay
+
       return {
         success: false,
         storeId: '',
@@ -122,8 +131,25 @@ export class ConnectionService {
       code,
       payload.returnUrl,
       undefined,
-      name
+      name,
+      state
     )
+  }
+
+  private async resolveReplay(
+    state: string,
+    expectedStoreId?: string
+  ): Promise<CompleteConnectResult | null> {
+    const completed = await this.deps.oauthStateStore.peekCompleted(state)
+    if (!completed) return null
+    if (expectedStoreId && completed.storeId !== expectedStoreId) return null
+
+    return {
+      success: true,
+      storeId: completed.storeId,
+      jobId: completed.jobId,
+      returnUrl: completed.returnUrl,
+    }
   }
 
   async completeConnectForTenant(
@@ -148,7 +174,8 @@ export class ConnectionService {
       code,
       payload.returnUrl,
       authClaims,
-      name
+      name,
+      state
     )
   }
 
@@ -156,7 +183,12 @@ export class ConnectionService {
     tenantId: string,
     storeId: string,
     authClaims?: Record<string, unknown>
-  ): Promise<{ success: boolean; storeId: string; error: string | null }> {
+  ): Promise<{
+    success: boolean
+    storeId: string
+    jobId: string | null
+    error: string | null
+  }> {
     const validStoreId = validateStoreId(storeId)
     console.info(
       `[credentials] disconnect tenant=${tenantId} store=${validStoreId} actor=${auditActor(authClaims)}`
@@ -167,27 +199,28 @@ export class ConnectionService {
       return {
         success: false,
         storeId: validStoreId,
+        jobId: null,
         error: `Store ${validStoreId} is not connected`,
       }
     }
 
-    let cleanupError: string | null = null
+    const conn = await this.deps.connectionRepository.findActiveByStoreId(tenantId, validStoreId)
+
+    const redis = createRedisClient(process.env.REDIS_URL, 'command')
     try {
-      await this.deps.storeDataCleaner.cleanup(tenantId, validStoreId)
-    } catch (err) {
-      cleanupError = err instanceof Error ? err.message : 'Unknown error'
-      console.warn(
-        `[credentials] disconnect cleanup failed tenant=${tenantId} store=${validStoreId}: ${cleanupError}`
-      )
-    }
-
-    await this.deps.tokenStore.deleteConnection(tenantId, validStoreId)
-    await this.deps.connectionRepository.delete(tenantId, validStoreId)
-
-    return {
-      success: true,
-      storeId: validStoreId,
-      error: cleanupError,
+      const { jobId } = await enqueueStoreDisconnectJob(redis, {
+        tenantId,
+        storeId: validStoreId,
+        connectionId: conn?.connectionId,
+      })
+      return {
+        success: true,
+        storeId: validStoreId,
+        jobId,
+        error: null,
+      }
+    } finally {
+      await redis.quit()
     }
   }
 
@@ -212,7 +245,7 @@ export class ConnectionService {
     }
 
     const displayName = name.trim() || validStoreId
-    await this.deps.connectionRepository.upsert(tenantId, validStoreId, name)
+    await this.deps.connectionRepository.upsertActiveName(tenantId, validStoreId, name)
 
     return {
       success: true,
@@ -222,46 +255,84 @@ export class ConnectionService {
     }
   }
 
-  async listConnections(tenantId: string): Promise<ConnectionListItem[]> {
-    const storeIds = await this.deps.tokenStore.listConnectedStoreIds(tenantId)
-    const mongoDocs = await this.deps.connectionRepository.listByTenant(tenantId)
-    const docById = new Map(mongoDocs.map((doc) => [doc.id, doc]))
-    const connectedIdSet = new Set(storeIds)
-
-    for (const doc of mongoDocs) {
-      if (!connectedIdSet.has(doc.id)) {
-        await this.deps.connectionRepository.delete(tenantId, doc.id)
+  async updateStoreId(
+    tenantId: string,
+    connectionId: string,
+    newStoreId: string
+  ): Promise<{
+    success: boolean
+    connectionId: string
+    storeId: string | null
+    error: string | null
+  }> {
+    const validStoreId = validateStoreId(newStoreId)
+    const conn = await this.deps.connectionRepository.findByConnectionId(tenantId, connectionId)
+    if (!conn || conn.status !== 'ACTIVE') {
+      return {
+        success: false,
+        connectionId,
+        storeId: null,
+        error: 'Connection is not active',
       }
     }
 
-    const results: ConnectionListItem[] = []
-    for (const storeId of storeIds) {
-      const token = await this.deps.tokenStore.getToken(tenantId, storeId)
-      if (!token) {
-        continue
+    const token = await this.deps.tokenStore.getTokenByConnectionId(tenantId, connectionId)
+    if (!token) {
+      return {
+        success: false,
+        connectionId,
+        storeId: null,
+        error: 'Connection has no active credentials',
       }
+    }
 
-      let doc = docById.get(storeId)
-      if (!doc) {
-        await this.deps.connectionRepository.upsert(tenantId, storeId, storeId)
-        doc = {
-          tenantId,
-          id: storeId,
-          name: storeId,
-          connectedAt: token.connected_at ? new Date(token.connected_at) : new Date(),
-          updatedAt: new Date(),
-        }
+    const conflict = await this.deps.connectionRepository.findActiveByStoreId(tenantId, validStoreId)
+    if (conflict && conflict.connectionId !== connectionId) {
+      return {
+        success: false,
+        connectionId,
+        storeId: null,
+        error: `Store slug ${validStoreId} is already in use`,
       }
+    }
+
+    const oldStoreId = resolveStoreId(conn)
+    await this.deps.connectionRepository.migrateStoreId(tenantId, connectionId, validStoreId)
+    await this.deps.tokenStore.deleteConnection(tenantId, connectionId, oldStoreId)
+    await this.deps.tokenStore.saveConnection(tenantId, connectionId, validStoreId, token)
+
+    return {
+      success: true,
+      connectionId,
+      storeId: validStoreId,
+      error: null,
+    }
+  }
+
+  async listConnections(tenantId: string): Promise<ConnectionListItem[]> {
+    const mongoDocs = await this.deps.connectionRepository.listByTenant(tenantId)
+    const results: ConnectionListItem[] = []
+
+    for (const doc of mongoDocs) {
+      const storeId = resolveStoreId(doc)
+      const token =
+        doc.status === 'ACTIVE'
+          ? await this.deps.tokenStore.getToken(tenantId, storeId)
+          : null
 
       results.push({
+        connectionId: doc.connectionId,
+        storeId,
         id: storeId,
         name: doc.name,
-        connectedAt: doc.connectedAt.toISOString(),
-        isConnected: true,
+        status: doc.status,
+        connectedAt: doc.connectedAt?.toISOString() ?? null,
+        disconnectedAt: doc.disconnectedAt?.toISOString() ?? null,
+        isConnected: doc.status === 'ACTIVE' && token !== null,
       })
     }
 
-    return results.sort((a, b) => a.id.localeCompare(b.id))
+    return results.sort((a, b) => a.storeId.localeCompare(b.storeId))
   }
 
   async getStatus(tenantId: string, storeId: string): Promise<ConnectionStatusResult> {
@@ -315,31 +386,14 @@ export class ConnectionService {
     return this.deps.tokenStore.listConnectedStoreIds(tenantId)
   }
 
-  private async schedulePostConnectCategorySync(
-    tenantId: string,
-    storeId: string
-  ): Promise<void> {
-    try {
-      const { categorySyncService } = await import('../category-sync/index.js')
-      void categorySyncService.syncStore(tenantId, storeId, 'connect').catch((err) => {
-        const message = err instanceof Error ? err.message : String(err)
-        console.warn(
-          `[credentials] post-connect category sync failed tenant=${tenantId} store=${storeId}: ${message}`
-        )
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.warn(`[credentials] post-connect category sync unavailable: ${message}`)
-    }
-  }
-
   private async exchangeAndSave(
     tenantId: string,
     storeId: string,
     code: string,
     returnUrl?: string,
     authClaims?: Record<string, unknown>,
-    name?: string
+    name?: string,
+    state?: string
   ): Promise<CompleteConnectResult> {
     try {
       const redirectUri = this.deps.authConfig.requireRedirectUri()
@@ -351,22 +405,102 @@ export class ConnectionService {
         tokenUrl: this.deps.authConfig.getTokenUrl(),
       })
 
+      const account = await fetchConnectedAccount(token.access_token)
+      const displayName = name?.trim() || account.name?.trim() || storeId
+
+      let connectionId: string
+      let reconcileMode: SyncMode = 'BACKFILL'
+
+      const existing = await this.deps.connectionRepository.findByContaAzulAccountId(
+        tenantId,
+        account.contaAzulAccountId
+      )
+
+      if (existing?.status === 'DISCONNECTED') {
+        connectionId = existing.connectionId
+        const oldStoreId = resolveStoreId(existing)
+        await this.deps.connectionRepository.reactivate(
+          tenantId,
+          connectionId,
+          storeId,
+          displayName
+        )
+        if (oldStoreId !== storeId) {
+          await this.deps.connectionRepository.migrateStoreId(tenantId, connectionId, storeId)
+        }
+        await this.deps.connectionRepository.backfillConnectionIdOnSyncedData(
+          tenantId,
+          connectionId,
+          oldStoreId
+        )
+        const hasData = await this.deps.connectionRepository.hasSyncedData(tenantId, connectionId)
+        reconcileMode = hasData ? 'INCREMENTAL' : 'BACKFILL'
+      } else if (existing?.status === 'ACTIVE') {
+        const activeStoreId = resolveStoreId(existing)
+        if (activeStoreId !== storeId) {
+          return {
+            success: false,
+            storeId,
+            error: `Conta Azul account already connected as ${activeStoreId}`,
+            returnUrl,
+          }
+        }
+        connectionId = existing.connectionId
+        await this.deps.connectionRepository.upsertActiveName(tenantId, storeId, displayName)
+        reconcileMode = (await this.deps.connectionRepository.hasSyncedData(tenantId, connectionId))
+          ? 'INCREMENTAL'
+          : 'BACKFILL'
+      } else {
+        const created = await this.deps.connectionRepository.create(
+          tenantId,
+          storeId,
+          account.contaAzulAccountId,
+          displayName
+        )
+        connectionId = created.connectionId
+      }
+
       const stored: ContaAzulToken = {
         ...token,
         connected_at: Date.now(),
       }
-      await this.deps.tokenStore.saveConnection(tenantId, storeId, stored)
-      await this.deps.connectionRepository.upsert(tenantId, storeId, name ?? storeId)
+      await this.deps.tokenStore.saveConnection(tenantId, connectionId, storeId, stored)
 
       console.info(
-        `[credentials] connect tenant=${tenantId} store=${storeId} actor=${auditActor(authClaims)}`
+        `[credentials] connect tenant=${tenantId} store=${storeId} connectionId=${connectionId} actor=${auditActor(authClaims)}`
       )
 
-      void this.schedulePostConnectCategorySync(tenantId, storeId)
+      const redis = createRedisClient(process.env.REDIS_URL, 'command')
+      const { jobId } = await enqueueStoreReconcileJob(redis, {
+        tenantId,
+        storeId,
+        trigger: 'connect',
+        mode: reconcileMode,
+        connectionId,
+      })
+      await redis.quit()
 
-      return { success: true, storeId, returnUrl }
+      if (state) {
+        try {
+          await this.deps.oauthStateStore.markCompleted(state, {
+            storeId,
+            jobId,
+            returnUrl,
+          })
+        } catch (markErr) {
+          const reason = markErr instanceof Error ? markErr.message : 'Unknown error'
+          console.warn(
+            `[credentials] markCompleted failed tenant=${tenantId} store=${storeId}: ${reason}`
+          )
+        }
+      }
+
+      return { success: true, storeId, jobId, returnUrl }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
+      console.error(
+        `[credentials] connect failed tenant=${tenantId} store=${storeId}: ${message}`
+      )
       return { success: false, storeId, error: message, returnUrl }
     }
   }

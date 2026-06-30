@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/venda/vendedores"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itens": [
+        {
+          "id": "vend-1",
+          "nome": "Vendedor A",
+          "email": "vendedor.a@example.com",
+          "ativo": true
+        },
+        {
+          "id": "vend-2",
+          "nome": "Vendedor B",
+          "email": "vendedor.b@example.com",
+          "ativo": true
+        }
+      ],
+      "itens_totais": 2
+    }
+  }
+}

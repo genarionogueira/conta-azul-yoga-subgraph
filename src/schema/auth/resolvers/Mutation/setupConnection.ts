@@ -19,6 +19,7 @@ export async function setupConnection(
   return {
     success: result.success,
     storeId: result.storeId,
+    jobId: result.success && 'jobId' in result ? result.jobId : null,
     error: result.success ? null : result.error,
   }
 }

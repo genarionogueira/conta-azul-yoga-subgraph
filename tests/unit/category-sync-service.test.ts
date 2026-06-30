@@ -78,26 +78,17 @@ describe('CategorySyncService', () => {
     expect(result.skippedCount).toBe(1)
   })
 
-  it('GivenConnectedStore_WhenDisconnectStoreData_ThenDeletesConnectionDoc', async () => {
-    const connectionRepository = {
-      delete: vi.fn().mockResolvedValue(undefined),
-    }
-    service = new CategorySyncService(
-      tokenStore,
-      redis as never,
-      () => db,
-      publisher,
-      connectionRepository as never
-    )
+  it('GivenConnectedStore_WhenDisconnectStoreData_ThenDeletesCategoriesOnly', async () => {
+    service = new CategorySyncService(tokenStore, redis as never, () => db, publisher)
 
-    vi.mocked(tokenStore.deleteConnection).mockResolvedValue(undefined)
     vi.mocked(db.collection).mockReturnValue({
       deleteMany: vi.fn().mockResolvedValue({ deletedCount: 2 }),
       deleteOne: vi.fn().mockResolvedValue({ deletedCount: 1 }),
     } as never)
 
-    await service.disconnectStoreData('tenant-1', 'store-1')
+    const result = await service.disconnectStoreData('tenant-1', 'store-1')
 
-    expect(connectionRepository.delete).toHaveBeenCalledWith('tenant-1', 'store-1')
+    expect(result.deleted).toBe(2)
+    expect(tokenStore.deleteConnection).not.toHaveBeenCalled()
   })
 })

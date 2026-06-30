@@ -11,6 +11,7 @@ extend type Mutation {
   completeOAuthCallback(code: String!, state: String!, name: String): SetupResult!
   disconnectStore(storeId: ID!): DisconnectResult!
   updateConnection(id: ID!, name: String!): UpdateConnectionResult!
+  updateStoreId(connectionId: ID!, storeId: ID!): UpdateStoreIdResult!
 }
 
 type ContaAzulAuthConfig {
@@ -29,6 +30,7 @@ type OAuthUrl {
 type SetupResult {
   success: Boolean!
   storeId: ID!
+  jobId: ID
   error: String
 }
 
@@ -47,16 +49,26 @@ type ConnectedStoreSummary {
   expiresAt: String
 }
 
+enum ContaAzulConnectionStatus {
+  ACTIVE
+  DISCONNECTED
+}
+
 type ContaAzulConnection {
+  connectionId: ID!
+  storeId: ID!
   id: ID!
   name: String!
-  connectedAt: String
+  status: ContaAzulConnectionStatus!
   isConnected: Boolean!
+  connectedAt: String
+  disconnectedAt: String
 }
 
 type DisconnectResult {
   success: Boolean!
   storeId: ID!
+  jobId: ID
   error: String
 }
 
@@ -64,5 +76,12 @@ type UpdateConnectionResult {
   success: Boolean!
   id: ID!
   name: String
+  error: String
+}
+
+type UpdateStoreIdResult {
+  success: Boolean!
+  connectionId: ID!
+  storeId: ID
   error: String
 }

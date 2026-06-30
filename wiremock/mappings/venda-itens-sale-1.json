@@ -1,0 +1,42 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/venda/sale-1/itens"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itens": [
+        {
+          "id": "line-1",
+          "id_item": "prod-1",
+          "nome": "Produto Alpha",
+          "descricao": "Descrição Alpha",
+          "tipo": "PRODUTO",
+          "quantidade": 2,
+          "valor": 150.5,
+          "custo": 80
+        },
+        {
+          "id": "line-2",
+          "id_item": "prod-2",
+          "nome": "Serviço Beta",
+          "descricao": "Descrição Beta",
+          "tipo": "SERVICO",
+          "quantidade": 1,
+          "valor": 300,
+          "custo": 100
+        }
+      ],
+      "itens_totais": 2,
+      "totais": {
+        "quantidade_produtos": 2,
+        "quantidade_servicos": 1,
+        "quantidade_nao_conciliados": 0
+      }
+    }
+  }
+}

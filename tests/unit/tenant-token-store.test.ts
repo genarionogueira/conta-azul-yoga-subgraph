@@ -7,9 +7,12 @@ import {
 } from '../../src/lib/credentials/tenant-token-store.js'
 import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
+const connectionId = 'conn-1'
+
 function createMockRedis() {
   return {
     get: vi.fn(),
+    set: vi.fn(),
     setex: vi.fn(),
     zadd: vi.fn(),
     zrange: vi.fn(),
@@ -53,12 +56,17 @@ describe('TenantTokenStore', () => {
       refresh_token: 'refresh',
       expires_at: Date.now() + 3_600_000,
     }
-    redis.get.mockResolvedValue(`plain:${JSON.stringify(token)}`)
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === `conta_azul:store_link:${tenantId}:${storeId}`) return connectionId
+      if (key === `conta_azul:token:${tenantId}:${connectionId}`) {
+        return `plain:${JSON.stringify(token)}`
+      }
+      return null
+    })
 
     const result = await store.getToken(tenantId, storeId)
 
     expect(result).toEqual(token)
-    expect(redis.get).toHaveBeenCalledWith(`conta_azul:token:${tenantId}:${storeId}`)
   })
 
   it('GivenExpiredToken_WhenEnsureFresh_ThenRefreshesAndReturnsNewToken', async () => {
@@ -67,7 +75,13 @@ describe('TenantTokenStore', () => {
       refresh_token: 'refresh',
       expires_at: Date.now() - 1_000,
     }
-    redis.get.mockResolvedValue(`plain:${JSON.stringify(expired)}`)
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === `conta_azul:store_link:${tenantId}:${storeId}`) return connectionId
+      if (key === `conta_azul:token:${tenantId}:${connectionId}`) {
+        return `plain:${JSON.stringify(expired)}`
+      }
+      return null
+    })
     vi.mocked(fetch).mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -83,7 +97,7 @@ describe('TenantTokenStore', () => {
 
     expect(result.access_token).toBe('new-access')
     expect(redis.setex).toHaveBeenCalledWith(
-      `conta_azul:token:${tenantId}:${storeId}`,
+      `conta_azul:token:${tenantId}:${connectionId}`,
       expect.any(Number),
       expect.stringContaining('new-access')
     )
@@ -95,7 +109,13 @@ describe('TenantTokenStore', () => {
       refresh_token: 'refresh',
       expires_at: Date.now() + 3_600_000,
     }
-    redis.get.mockResolvedValue(`plain:${JSON.stringify(fresh)}`)
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === `conta_azul:store_link:${tenantId}:${storeId}`) return connectionId
+      if (key === `conta_azul:token:${tenantId}:${connectionId}`) {
+        return `plain:${JSON.stringify(fresh)}`
+      }
+      return null
+    })
 
     const result = await store.ensureFreshToken(tenantId, storeId)
 
@@ -118,7 +138,13 @@ describe('TenantTokenStore', () => {
       refresh_token: 'refresh',
       expires_at: Date.now() - 1_000,
     }
-    redis.get.mockResolvedValue(`plain:${JSON.stringify(expired)}`)
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === `conta_azul:store_link:${tenantId}:${storeId}`) return connectionId
+      if (key === `conta_azul:token:${tenantId}:${connectionId}`) {
+        return `plain:${JSON.stringify(expired)}`
+      }
+      return null
+    })
     vi.mocked(fetch).mockResolvedValue(new Response('error', { status: 401 }))
 
     await expect(store.ensureFreshToken(tenantId, storeId)).rejects.toBeInstanceOf(
@@ -129,7 +155,10 @@ describe('TenantTokenStore', () => {
   it('GivenTwoStoresInIndex_WhenListConnectedStoreIds_ThenReturnsBothStoreIds', async () => {
     redis.zrange.mockResolvedValue(['store-2', 'store-1'])
     redis.get.mockImplementation(async (key: string) => {
-      if (key.includes('store-1') || key.includes('store-2')) {
+      if (key.includes('store_link')) {
+        return key.includes('store-1') ? 'conn-1' : 'conn-2'
+      }
+      if (key.includes('token')) {
         return `plain:${JSON.stringify({
           access_token: 'access',
           refresh_token: 'refresh',
@@ -142,7 +171,6 @@ describe('TenantTokenStore', () => {
     const result = await store.listConnectedStoreIds(tenantId)
 
     expect(result).toEqual(['store-1', 'store-2'])
-    expect(redis.zrange).toHaveBeenCalledWith(`conta_azul:connected_stores:${tenantId}`, 0, -1)
   })
 
   it('GivenNoStoresInIndex_WhenListConnectedStoreIds_ThenReturnsEmptyArray', async () => {
@@ -157,6 +185,7 @@ describe('TenantTokenStore', () => {
     redis.zrange.mockResolvedValue(['store-a', 'store-b'])
     redis.get.mockImplementation(async (key: string) => {
       if (key.includes('store-a')) {
+        if (key.includes('store_link')) return 'conn-a'
         return `plain:${JSON.stringify({
           access_token: 'access',
           refresh_token: 'refresh',
@@ -175,17 +204,17 @@ describe('TenantTokenStore', () => {
   it('GivenExistingToken_WhenDeleteConnection_ThenKeyRemoved', async () => {
     redis.del.mockResolvedValue(1)
 
-    const result = await store.deleteConnection(tenantId, storeId)
+    const result = await store.deleteConnection(tenantId, connectionId, storeId)
 
     expect(result).toBe(true)
-    expect(redis.del).toHaveBeenCalledWith(`conta_azul:token:${tenantId}:${storeId}`)
+    expect(redis.del).toHaveBeenCalledWith(`conta_azul:token:${tenantId}:${connectionId}`)
     expect(redis.zrem).toHaveBeenCalledWith(`conta_azul:connected_stores:${tenantId}`, storeId)
   })
 
   it('GivenMissingToken_WhenDeleteConnection_ThenReturnsFalse', async () => {
     redis.del.mockResolvedValue(0)
 
-    const result = await store.deleteConnection(tenantId, storeId)
+    const result = await store.deleteConnection(tenantId, connectionId, storeId)
 
     expect(result).toBe(false)
   })

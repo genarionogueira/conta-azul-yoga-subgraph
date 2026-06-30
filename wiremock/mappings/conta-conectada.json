@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/pessoas/conta-conectada"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "id": "empresa-e2e-1",
+      "nome": "Empresa E2E WireMock",
+      "documento": "12.345.678/0001-90"
+    }
+  }
+}

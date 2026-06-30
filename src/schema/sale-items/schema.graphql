@@ -1,0 +1,16 @@
+type SaleItem
+  @model
+  @mongo(collection: "sale_items")
+  @tenant(field: "storeId")
+  @key(fields: "id storeId") {
+  id: ID!
+  storeId: ID!
+  saleId: ID!
+  produtoId: ID
+  nome: String
+  descricao: String
+  tipo: String
+  quantidade: Float
+  valor: Float
+  custo: Float
+}

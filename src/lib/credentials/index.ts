@@ -3,7 +3,6 @@ import { AuthConfig } from '../auth-config.js'
 import { ConnectionRepository } from '../connections/connection-repository.js'
 import { getDb } from '../mongo/connection.js'
 import { OAuthStateStore } from '../oauth-state.js'
-import { cleanupStoreData } from '../worker-client/cleanup-store-data.js'
 import { ConnectionService } from './connection-service.js'
 import { TenantTokenStore } from './tenant-token-store.js'
 
@@ -31,7 +30,6 @@ export const connectionService = new ConnectionService({
   oauthStateStore,
   tokenStore: tenantTokenStore,
   connectionRepository,
-  storeDataCleaner: { cleanup: cleanupStoreData },
 })
 
 export async function disconnectCredentialsRedis(): Promise<void> {

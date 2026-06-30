@@ -4,12 +4,21 @@ export type WorkerSyncEventType =
   | 'reconcile.started'
   | 'reconcile.completed'
   | 'reconcile.failed'
+  | 'reconcile.sales.started'
+  | 'reconcile.sales.completed'
+  | 'reconcile.sales.failed'
+  | 'reconcile.sale_items.started'
+  | 'reconcile.sale_items.completed'
+  | 'reconcile.sale_items.failed'
+  | 'reconcile.vendedores.started'
+  | 'reconcile.vendedores.completed'
+  | 'reconcile.vendedores.failed'
   | 'store.data_deleted'
   | 'reconcile.cycle.completed'
   | 'worker.log'
 
 export interface WorkerSyncEventPayload {
-  type: WorkerSyncEventType
+  type: WorkerSyncEventType | string
   tenantId: string
   storeId?: string | null
   trigger?: string | null
@@ -50,7 +59,7 @@ export function parseWorkerSyncEvent(
       return null
     }
     return {
-      type: type as WorkerSyncEventType,
+      type,
       tenantId,
       storeId: optionalString(data.storeId),
       trigger: optionalString(data.trigger),
@@ -75,9 +84,7 @@ export function parseWorkerSyncEvent(
   }
 }
 
-export function toGraphqlWorkerSyncEventType(
-  type: WorkerSyncEventType
-): string {
+export function toGraphqlWorkerSyncEventType(type: string): string {
   switch (type) {
     case 'reconcile.started':
       return 'RECONCILE_STARTED'
@@ -85,6 +92,24 @@ export function toGraphqlWorkerSyncEventType(
       return 'RECONCILE_COMPLETED'
     case 'reconcile.failed':
       return 'RECONCILE_FAILED'
+    case 'reconcile.sales.started':
+      return 'SALES_RECONCILE_STARTED'
+    case 'reconcile.sales.completed':
+      return 'SALES_RECONCILE_COMPLETED'
+    case 'reconcile.sales.failed':
+      return 'SALES_RECONCILE_FAILED'
+    case 'reconcile.sale_items.started':
+      return 'SALE_ITEMS_RECONCILE_STARTED'
+    case 'reconcile.sale_items.completed':
+      return 'SALE_ITEMS_RECONCILE_COMPLETED'
+    case 'reconcile.sale_items.failed':
+      return 'SALE_ITEMS_RECONCILE_FAILED'
+    case 'reconcile.vendedores.started':
+      return 'VENDEDORES_RECONCILE_STARTED'
+    case 'reconcile.vendedores.completed':
+      return 'VENDEDORES_RECONCILE_COMPLETED'
+    case 'reconcile.vendedores.failed':
+      return 'VENDEDORES_RECONCILE_FAILED'
     case 'store.data_deleted':
       return 'STORE_DATA_DELETED'
     case 'reconcile.cycle.completed':
@@ -92,7 +117,7 @@ export function toGraphqlWorkerSyncEventType(
     case 'worker.log':
       return 'WORKER_LOG'
     default:
-      return 'RECONCILE_STARTED'
+      return 'WORKER_LOG'
   }
 }
 

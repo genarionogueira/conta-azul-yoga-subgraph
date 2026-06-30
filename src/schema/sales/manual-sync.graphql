@@ -1,0 +1,3 @@
+extend type Mutation {
+  syncContaAzulSales(storeId: ID): SyncResult!
+}

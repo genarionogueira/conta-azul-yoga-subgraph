@@ -1,0 +1,73 @@
+enum SyncMode {
+  BACKFILL
+  INCREMENTAL
+}
+
+enum SyncPhase {
+  BACKFILL
+  INCREMENTAL
+  DISCONNECT
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+type ResourceProgress {
+  resource: String!
+  total: Int
+  completed: Int!
+  status: SyncStatus!
+  errorMessage: String
+}
+
+type StoreSyncJob {
+  jobId: ID!
+  tenantId: String!
+  storeId: String!
+  phase: SyncPhase!
+  status: SyncStatus!
+  percentage: Int!
+  resources: [ResourceProgress!]!
+  startedAt: String!
+  updatedAt: String!
+  errorMessage: String
+}
+
+input ResourceProgressInput {
+  resource: String!
+  total: Int
+  completed: Int!
+  status: SyncStatus!
+  errorMessage: String
+}
+
+input StoreSyncProgressInput {
+  jobId: ID!
+  tenantId: String!
+  storeId: String!
+  phase: SyncPhase!
+  status: SyncStatus!
+  percentage: Int!
+  resources: [ResourceProgressInput!]!
+  errorMessage: String
+}
+
+extend type Query {
+  storeSyncJob(jobId: ID!): StoreSyncJob
+  activeStoreSyncJob(storeId: ID!): StoreSyncJob
+  contaAzulSalesWatermark(tenantId: String!, storeId: String!): String
+  contaAzulActiveBackfill(tenantId: String!, storeId: String!): Boolean!
+}
+
+extend type Mutation {
+  reportStoreSyncProgress(input: StoreSyncProgressInput!): StoreSyncJob!
+}
+
+extend type Subscription {
+  storeSyncProgress(jobId: ID!): StoreSyncJob!
+  storeSyncProgressByStore(storeId: ID!): StoreSyncJob!
+}

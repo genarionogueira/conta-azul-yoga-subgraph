@@ -1,0 +1,18 @@
+scalar JSON
+
+type ContaAzulRestFetchResult {
+  storeId: ID!
+  fetchedAt: String!
+  items: [JSON!]!
+}
+
+extend type Query {
+  contaAzulRestVendaBusca(
+    tenantId: ID!
+    storeId: ID!
+    dataInicio: String
+    dataFim: String
+  ): ContaAzulRestFetchResult!
+  contaAzulRestVendaItens(tenantId: ID!, storeId: ID!, saleId: ID!): ContaAzulRestFetchResult!
+  contaAzulRestVendaVendedores(tenantId: ID!, storeId: ID!): ContaAzulRestFetchResult!
+}

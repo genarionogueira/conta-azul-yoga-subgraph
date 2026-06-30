@@ -7,8 +7,13 @@ import { isFresh, metaKey, writeMeta } from './meta.js'
 import { globalSingleflight } from './singleflight.js'
 import { parseTtl } from './ttl-parser.js'
 
-/** Collections synced via category reconcile — not REST cache refresh. */
-const CATEGORY_SYNC_COLLECTIONS = new Set(['conta_azul_categories'])
+/** Collections synced via worker reconcile — not REST cache refresh. */
+const WORKER_OWNED_COLLECTIONS = new Set([
+  'conta_azul_categories',
+  'sales',
+  'sale_items',
+  'vendedores',
+])
 
 export interface EnsureFreshCacheOptions {
   tenantId: string
@@ -121,8 +126,8 @@ export async function ensureFreshCache(
   entity: EntityDef,
   opts: EnsureFreshCacheOptions
 ): Promise<void> {
-  if (CATEGORY_SYNC_COLLECTIONS.has(entity.mongo.collection)) {
-    logCache('category_sync_skip', {
+  if (WORKER_OWNED_COLLECTIONS.has(entity.mongo.collection)) {
+    logCache('worker_owned_skip', {
       entity: entity.name,
       collection: entity.mongo.collection,
     })

@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/v1/venda/sale-pb-[0-9]+/itens"
+  },
+  "priority": 5,
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itens": [
+        {
+          "id": "line-1",
+          "id_item": "prod-1",
+          "nome": "Produto Parallel",
+          "descricao": "Parallel backfill item",
+          "tipo": "PRODUTO",
+          "quantidade": 1,
+          "valor": 99.9,
+          "custo": 50
+        }
+      ],
+      "itens_totais": 1,
+      "totais": {
+        "quantidade_produtos": 1,
+        "quantidade_servicos": 0,
+        "quantidade_nao_conciliados": 0
+      }
+    }
+  }
+}

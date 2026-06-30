@@ -18,6 +18,30 @@ async function createIndexSafe(
   }
 }
 
+export async function ensureSalesIndexes(db: Db): Promise<void> {
+  const col = db.collection('sales')
+  await createIndexSafe(col, { storeId: 1 })
+  await createIndexSafe(col, { data: 1 })
+  await createIndexSafe(col, { tipo: 1 })
+  await createIndexSafe(col, { situacaoNome: 1 })
+  await createIndexSafe(col, { storeId: 1, tipo: 1 })
+  await createIndexSafe(col, { _syncedAt: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1, id: 1 })
+}
+
+export async function ensureSaleItemIndexes(db: Db): Promise<void> {
+  const col = db.collection('sale_items')
+  await createIndexSafe(col, { storeId: 1 })
+  await createIndexSafe(col, { saleId: 1 })
+  await createIndexSafe(col, { storeId: 1, saleId: 1 })
+  await createIndexSafe(col, { nome: 1 })
+  await createIndexSafe(col, { tipo: 1 })
+  await createIndexSafe(col, { _syncedAt: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1, id: 1 })
+}
+
 export async function ensureCategoriesIndexes(db: Db): Promise<void> {
   const col = db.collection('conta_azul_categories')
   await createIndexSafe(col, { storeId: 1 })
@@ -32,12 +56,43 @@ export async function ensureCategoriesIndexes(db: Db): Promise<void> {
   await createIndexSafe(meta, { collection: 1, storeId: 1 })
 }
 
+export async function ensureVendedoresIndexes(db: Db): Promise<void> {
+  const col = db.collection('vendedores')
+  await createIndexSafe(col, { storeId: 1 })
+  await createIndexSafe(col, { nome: 1 })
+  await createIndexSafe(col, { ativo: 1 })
+  await createIndexSafe(col, { _syncedAt: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1 })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1, id: 1 })
+}
+
 function connectionsCollectionName(): string {
   return process.env.CONNECTIONS_COLLECTION?.trim() || 'conta_azul_connections'
 }
 
 export async function ensureConnectionsIndexes(db: Db): Promise<void> {
   const col = db.collection(connectionsCollectionName())
-  await createIndexSafe(col, { tenantId: 1, id: 1 }, { unique: true })
+  await createIndexSafe(col, { tenantId: 1, connectionId: 1 }, { unique: true })
+  await createIndexSafe(
+    col,
+    { tenantId: 1, storeId: 1 },
+    { unique: true, partialFilterExpression: { status: 'ACTIVE' } }
+  )
+  await createIndexSafe(
+    col,
+    { tenantId: 1, contaAzulAccountId: 1 },
+    { unique: true, partialFilterExpression: { status: 'ACTIVE' } }
+  )
+  await createIndexSafe(col, { tenantId: 1, id: 1 }, { unique: true, sparse: true })
   await createIndexSafe(col, { tenantId: 1, connectedAt: -1 })
+}
+
+function storeSyncJobsCollectionName(): string {
+  return process.env.STORE_SYNC_JOBS_COLLECTION?.trim() || 'store_sync_jobs'
+}
+
+export async function ensureStoreSyncJobIndexes(db: Db): Promise<void> {
+  const col = db.collection(storeSyncJobsCollectionName())
+  await createIndexSafe(col, { tenantId: 1, jobId: 1 }, { unique: true })
+  await createIndexSafe(col, { tenantId: 1, storeId: 1, status: 1 })
 }

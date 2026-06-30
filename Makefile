@@ -29,7 +29,7 @@ help:
 	@echo ""
 	@echo "  make dev             Start yoga + avcd-worker + Redis + Mongo; open Compass"
 	@echo "                       compose.yaml + compose.dev.yaml + compose.override.local.yaml"
-	@echo "                       GraphQL: http://localhost:$(GRAPHQL_PORT)/graphql"
+	@echo "                       GraphQL: http://localhost:$(GRAPHQL_PORT)/graphql (GraphiQL — no Authorization header required)"
 	@echo "                       Worker:  http://localhost:$(WORKER_PORT)/health"
 	@echo "                       Connect: http://localhost:$(GRAPHQL_PORT)/connect"
 	@echo "  make dev-down        Stop yoga stack (same as make down)"

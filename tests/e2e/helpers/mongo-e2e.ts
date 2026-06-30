@@ -1,5 +1,6 @@
 import { MongoClient } from 'mongodb'
 import { META_COLLECTION } from '../../../src/lib/cache/meta.js'
+import { DEFAULT_DEV_TENANT_ID } from '../../../src/lib/auth/tenant-context.js'
 
 function getMongoUrl(): string {
   const url = process.env.E2E_MONGO_URL
@@ -19,9 +20,17 @@ export async function withE2eMongo<T>(fn: (db: ReturnType<MongoClient['db']>) =>
   }
 }
 
-export async function clearStoreCategories(storeId: string): Promise<void> {
+export async function clearStoreCategories(
+  storeId: string,
+  tenantId?: string
+): Promise<void> {
   await withE2eMongo(async (db) => {
-    await db.collection('conta_azul_categories').deleteMany({ storeId })
+    const filter = tenantId ? { storeId, tenantId } : { storeId }
+    await db.collection('conta_azul_categories').deleteMany(filter)
+    await db.collection('conta_azul_categories').deleteMany({
+      storeId,
+      tenantId: { $exists: false },
+    })
     await db.collection(META_COLLECTION).deleteMany({
       _id: `conta_azul_categories:${storeId}`,
     })
@@ -44,6 +53,7 @@ export async function seedStaleCategories(storeId: string): Promise<void> {
     await col.insertMany([
       {
         id: 'cat-stale-1',
+        tenantId: DEFAULT_DEV_TENANT_ID,
         storeId,
         nome: 'Stale Receitas',
         tipo: 'RECEITA',

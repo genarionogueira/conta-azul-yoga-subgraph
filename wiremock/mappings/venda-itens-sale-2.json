@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/venda/sale-2/itens"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itens": [
+        {
+          "id": "line-3",
+          "id_item": "prod-3",
+          "nome": "Produto Gamma",
+          "descricao": null,
+          "tipo": "PRODUTO",
+          "quantidade": 3,
+          "valor": 50,
+          "custo": 20
+        }
+      ],
+      "itens_totais": 1,
+      "totais": {
+        "quantidade_produtos": 3,
+        "quantidade_servicos": 0,
+        "quantidade_nao_conciliados": 0
+      }
+    }
+  }
+}

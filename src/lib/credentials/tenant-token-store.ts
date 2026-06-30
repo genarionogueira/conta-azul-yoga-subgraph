@@ -1,6 +1,7 @@
 import type { Redis } from 'ioredis'
 
 const TOKEN_KEY_PREFIX = 'conta_azul:token:'
+const STORE_LINK_PREFIX = 'conta_azul:store_link:'
 const CONNECTED_STORES_PREFIX = 'conta_azul:connected_stores:'
 const TTL_BUFFER_MS = 24 * 60 * 60 * 1000
 const REFRESH_BUFFER_MS = 5 * 60 * 1000
@@ -26,8 +27,16 @@ export class TokenRefreshError extends Error {
   }
 }
 
-function tokenKey(tenantId: string, storeId: string): string {
+function tokenKey(tenantId: string, connectionId: string): string {
+  return `${TOKEN_KEY_PREFIX}${tenantId}:${connectionId}`
+}
+
+function legacyTokenKey(tenantId: string, storeId: string): string {
   return `${TOKEN_KEY_PREFIX}${tenantId}:${storeId}`
+}
+
+function storeLinkKey(tenantId: string, storeId: string): string {
+  return `${STORE_LINK_PREFIX}${tenantId}:${storeId}`
 }
 
 function connectedStoresKey(tenantId: string): string {
@@ -63,26 +72,60 @@ export class TenantTokenStore {
     private readonly tokenUrl: string
   ) {}
 
-  async getToken(tenantId: string, storeId: string): Promise<ContaAzulToken | null> {
-    const raw = await this.redis.get(tokenKey(tenantId, storeId))
+  private async resolveConnectionId(
+    tenantId: string,
+    storeId: string
+  ): Promise<string | null> {
+    const linked = await this.redis.get(storeLinkKey(tenantId, storeId))
+    if (linked) return linked
+    const legacy = await this.redis.get(legacyTokenKey(tenantId, storeId))
+    if (legacy) return storeId
+    return null
+  }
+
+  async getTokenByConnectionId(
+    tenantId: string,
+    connectionId: string
+  ): Promise<ContaAzulToken | null> {
+    const raw = await this.redis.get(tokenKey(tenantId, connectionId))
     if (!raw) return null
     return parseToken(raw)
   }
 
+  async getToken(tenantId: string, storeId: string): Promise<ContaAzulToken | null> {
+    const connectionId = await this.resolveConnectionId(tenantId, storeId)
+    if (connectionId) {
+      const byConnection = await this.getTokenByConnectionId(tenantId, connectionId)
+      if (byConnection) return byConnection
+    }
+    const legacyRaw = await this.redis.get(legacyTokenKey(tenantId, storeId))
+    if (!legacyRaw) return null
+    return parseToken(legacyRaw)
+  }
+
   async saveConnection(
     tenantId: string,
+    connectionId: string,
     storeId: string,
     token: ContaAzulToken
   ): Promise<void> {
     const connectedAt = token.connected_at ?? Date.now()
     const stored: ContaAzulToken = { ...token, connected_at: connectedAt }
-    const key = tokenKey(tenantId, storeId)
+    const key = tokenKey(tenantId, connectionId)
     await this.redis.setex(key, ttlSeconds(stored), `plain:${JSON.stringify(stored)}`)
+    await this.redis.set(storeLinkKey(tenantId, storeId), connectionId)
     await this.redis.zadd(connectedStoresKey(tenantId), connectedAt, storeId)
+    await this.redis.del(legacyTokenKey(tenantId, storeId))
   }
 
-  async deleteConnection(tenantId: string, storeId: string): Promise<boolean> {
-    const deleted = await this.redis.del(tokenKey(tenantId, storeId))
+  async deleteConnection(
+    tenantId: string,
+    connectionId: string,
+    storeId: string
+  ): Promise<boolean> {
+    const deleted = await this.redis.del(tokenKey(tenantId, connectionId))
+    await this.redis.del(storeLinkKey(tenantId, storeId))
+    await this.redis.del(legacyTokenKey(tenantId, storeId))
     await this.redis.zrem(connectedStoresKey(tenantId), storeId)
     return deleted > 0
   }
@@ -116,6 +159,7 @@ export class TenantTokenStore {
   }
 
   async ensureFreshToken(tenantId: string, storeId: string): Promise<ContaAzulToken> {
+    const connectionId = await this.resolveConnectionId(tenantId, storeId)
     const token = await this.getToken(tenantId, storeId)
     if (!token) {
       throw new TokenNotFoundError(`No token for store ${storeId}`)
@@ -124,7 +168,8 @@ export class TenantTokenStore {
       return token
     }
     const fresh = await this.refreshToken(token)
-    await this.saveConnection(tenantId, storeId, fresh)
+    const resolvedConnectionId = connectionId ?? storeId
+    await this.saveConnection(tenantId, resolvedConnectionId, storeId, fresh)
     return fresh
   }
 

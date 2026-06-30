@@ -16,6 +16,7 @@ export type CacheLogEvent =
   | 'sync_failed'
   | 'resolver_ensure_fresh'
   | 'category_sync_skip'
+  | 'worker_owned_skip'
 
 const WARN_EVENTS = new Set<CacheLogEvent>([
   'skip_no_token',

@@ -21,7 +21,7 @@ services:
       SALES_SYNC_DAYS: '90'
       JWT_ISSUER: avcd
       JWT_AUDIENCE: conta-azul-service
-      JWT_REQUIRED: 'true'
+      JWT_REQUIRED: 'false'
       KEYCLOAK_ENABLED: 'false'
       ZITADEL_ISSUER: https://zitadel.avcd.ai
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001,https://dev.avocado.tech

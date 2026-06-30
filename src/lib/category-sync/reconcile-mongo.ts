@@ -13,7 +13,8 @@ export async function reconcileCategoriesToMongo(
   collectionName: string,
   tenantId: string,
   storeId: string,
-  items: CategoryItem[]
+  items: CategoryItem[],
+  connectionId?: string
 ): Promise<{ synced: number; deleted: number }> {
   const col = db.collection(collectionName)
 
@@ -41,6 +42,7 @@ export async function reconcileCategoriesToMongo(
         ...item,
         tenantId,
         storeId,
+        ...(connectionId ? { connectionId } : {}),
         _syncedAt: now,
       })
       inserted += 1

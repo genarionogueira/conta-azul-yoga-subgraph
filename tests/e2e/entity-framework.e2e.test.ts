@@ -33,9 +33,21 @@ describe('E2E: Entity Framework — directive-driven entity generates full API',
     expect(sdl).not.toContain('@mongo')
   })
 
-  it('GivenModelDirective_WhenServerBoots_ThenSyncMutationAbsent', async () => {
-    const res = await gqlRaw(`mutation { syncContaAzulCategories { syncedCount status } }`)
-    expect(res.errors).toBeDefined()
-    expect(res.errors?.[0]?.message).toMatch(/syncContaAzulCategories|Cannot query field/)
+  it('GivenModelDirective_WhenServerBoots_ThenSalesConnectionQueryExists', async () => {
+    const res = await gqlRaw(
+      `{ sales(first: 1, where: { storeId: { _in: ["store-1", "store-2"] } }) { totalCount nodes { id storeId } } }`
+    )
+    expect(res.errors).toBeUndefined()
+    expect(
+      typeof (res.data as { sales: { totalCount: number } }).sales.totalCount
+    ).toBe('number')
+  })
+
+  it('GivenModelDirectiveWithoutRest_WhenServerBoots_ThenManualSyncMutationsPresent', async () => {
+    const res = await gqlRaw(`{ _service { sdl } }`)
+    const sdl = (res.data as { _service: { sdl: string } })._service.sdl
+    expect(sdl).toContain('syncContaAzulCategories')
+    expect(sdl).toContain('syncContaAzulSales')
+    expect(sdl).not.toContain('@rest')
   })
 })

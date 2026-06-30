@@ -10,4 +10,13 @@ describe('assembled schema subscription wiring', () => {
     expect(field?.subscribe).toBeTypeOf('function')
     expect(field?.resolve).toBeTypeOf('function')
   })
+
+  it('attaches subscribe and resolve for storeSyncProgress', async () => {
+    const schema = await getSchema()
+    const field = schema.getSubscriptionType()?.getFields().storeSyncProgress
+
+    expect(field).toBeDefined()
+    expect(field?.subscribe).toBeTypeOf('function')
+    expect(field?.resolve).toBeTypeOf('function')
+  })
 })

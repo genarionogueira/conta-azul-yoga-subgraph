@@ -1,4 +1,7 @@
 export function pluralizeEntityName(name: string): string {
+  if (name === 'Vendedor') {
+    return 'vendedores'
+  }
   const camel = name.charAt(0).toLowerCase() + name.slice(1)
   if (camel.endsWith('y')) {
     return `${camel.slice(0, -1)}ies`

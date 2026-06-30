@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/v1/venda/busca"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "itens": [
+        {
+          "id": "sale-1",
+          "numero": 1001,
+          "data": "2026-01-15",
+          "data_alteracao": "2026-01-15T10:00:00Z",
+          "tipo": "VENDA",
+          "situacao": { "nome": "APROVADA", "descricao": "Aprovada" },
+          "cliente": { "nome": "Cliente A", "id": "cli-1" },
+          "origem": "MANUAL"
+        },
+        {
+          "id": "sale-2",
+          "numero": 1002,
+          "data": "2026-02-01",
+          "data_alteracao": "2026-02-01T12:00:00Z",
+          "tipo": "ORCAMENTO",
+          "situacao": { "nome": "PENDENTE", "descricao": "Pendente" },
+          "cliente": { "nome": "Cliente B", "id": "cli-2" },
+          "origem": "API"
+        }
+      ],
+      "totais": {
+        "total": 2,
+        "aprovado": 1,
+        "cancelado": 0,
+        "atendimento": 0,
+        "expirado": 0
+      }
+    }
+  }
+}

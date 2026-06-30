@@ -27,9 +27,23 @@ type Query {
   connectedStores: [ConnectedStoreSummary!]!
   connections: [ContaAzulConnection!]!
   hello: String!
+  contaAzulRestVendaBusca(tenantId: ID!, storeId: ID!, dataInicio: String, dataFim: String): ContaAzulRestFetchResult!
+  contaAzulRestVendaItens(tenantId: ID!, storeId: ID!, saleId: ID!): ContaAzulRestFetchResult!
+  contaAzulRestVendaVendedores(tenantId: ID!, storeId: ID!): ContaAzulRestFetchResult!
+  storeSyncJob(jobId: ID!): StoreSyncJob
+  activeStoreSyncJob(storeId: ID!): StoreSyncJob
+  contaAzulSalesWatermark(tenantId: String!, storeId: String!): String
+  contaAzulActiveBackfill(tenantId: String!, storeId: String!): Boolean!
+  syncConnectedStores: [ConnectedStoreForSync!]!
   contaAzulWorkerSyncEvents(storeId: ID, limit: Int = 20): WorkerSyncEventConnection!
   contaAzulCategories(where: ContaAzulCategory_bool_exp, order_by: [ContaAzulCategory_order_by!], distinct_on: [ContaAzulCategory_select_column!], first: Int, after: String, last: Int, before: String): ContaAzulCategoryConnection!
   contaAzulCategoriesAggregate(where: ContaAzulCategory_bool_exp, distinct_on: [ContaAzulCategory_select_column!]): ContaAzulCategory_aggregate!
+  saleItems(where: SaleItem_bool_exp, order_by: [SaleItem_order_by!], distinct_on: [SaleItem_select_column!], first: Int, after: String, last: Int, before: String): SaleItemConnection!
+  saleItemsAggregate(where: SaleItem_bool_exp, distinct_on: [SaleItem_select_column!]): SaleItem_aggregate!
+  sales(where: Sale_bool_exp, order_by: [Sale_order_by!], distinct_on: [Sale_select_column!], first: Int, after: String, last: Int, before: String): SaleConnection!
+  salesAggregate(where: Sale_bool_exp, distinct_on: [Sale_select_column!]): Sale_aggregate!
+  vendedores(where: Vendedor_bool_exp, order_by: [Vendedor_order_by!], distinct_on: [Vendedor_select_column!], first: Int, after: String, last: Int, before: String): VendedorConnection!
+  vendedoresAggregate(where: Vendedor_bool_exp, distinct_on: [Vendedor_select_column!]): Vendedor_aggregate!
 }
 
 type Mutation {
@@ -37,10 +51,27 @@ type Mutation {
   completeOAuthCallback(code: String!, state: String!, name: String): SetupResult!
   disconnectStore(storeId: ID!): DisconnectResult!
   updateConnection(id: ID!, name: String!): UpdateConnectionResult!
+  updateStoreId(connectionId: ID!, storeId: ID!): UpdateStoreIdResult!
   syncContaAzulCategories(storeId: ID): SyncResult!
+  persistSales(tenantId: ID!, storeId: ID!, documents: [PersistDocumentInput!]!, mode: PersistMode = UPSERT, trigger: String): PersistResult!
+  persistSaleItems(tenantId: ID!, storeId: ID!, saleId: ID!, documents: [PersistDocumentInput!]!, mode: PersistMode = UPSERT, trigger: String): PersistResult!
+  persistVendedores(tenantId: ID!, storeId: ID!, documents: [PersistDocumentInput!]!, mode: PersistMode = UPSERT, trigger: String): PersistResult!
+  fetchAndPersistSaleItems(tenantId: ID!, storeId: ID!, saleId: ID!, mode: PersistMode = RECONCILE, trigger: String): FetchAndPersistSaleItemsResult!
+  syncContaAzulSales(storeId: ID): SyncResult!
+  reportStoreSyncProgress(input: StoreSyncProgressInput!): StoreSyncJob!
   reconcileStore(storeId: String!, tenantId: String!, trigger: String): ReconcileStoreResult!
   reconcileAll(trigger: String! = "scheduled"): ReconcileAllResult!
   disconnectStoreData(storeId: String!, tenantId: String!): DisconnectStoreDataResult!
+  deleteStoreSaleItemsPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreSalesPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreCategoriesPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreVendedoresPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  cleanupStoreDisconnectMetadata(tenantId: String!, storeId: String!, jobId: String!): CleanupStoreDisconnectMetadataResult!
+  finalizeStoreDisconnect(tenantId: String!, storeId: String!, connectionId: String): FinalizeStoreDisconnectResult!
+  syncCategories(tenantId: String!, storeId: String!, trigger: String): SyncResultGQL!
+  syncSales(tenantId: String!, storeId: String!, trigger: String): SyncSalesResultGQL!
+  syncSaleItems(tenantId: String!, storeId: String!, saleId: String!, trigger: String): SyncSaleItemsResultGQL!
+  enqueueReconcileStore(tenantId: String!, storeId: String!, trigger: String, mode: SyncMode): EnqueueResult!
 }
 
 type ContaAzulAuthConfig {
@@ -59,6 +90,7 @@ type OAuthUrl {
 type SetupResult {
   success: Boolean!
   storeId: ID!
+  jobId: ID
   error: String
 }
 
@@ -77,16 +109,26 @@ type ConnectedStoreSummary {
   expiresAt: String
 }
 
+enum ContaAzulConnectionStatus {
+  ACTIVE
+  DISCONNECTED
+}
+
 type ContaAzulConnection {
+  connectionId: ID!
+  storeId: ID!
   id: ID!
   name: String!
-  connectedAt: String
+  status: ContaAzulConnectionStatus!
   isConnected: Boolean!
+  connectedAt: String
+  disconnectedAt: String
 }
 
 type DisconnectResult {
   success: Boolean!
   storeId: ID!
+  jobId: ID
   error: String
 }
 
@@ -94,6 +136,13 @@ type UpdateConnectionResult {
   success: Boolean!
   id: ID!
   name: String
+  error: String
+}
+
+type UpdateStoreIdResult {
+  success: Boolean!
+  connectionId: ID!
+  storeId: ID
   error: String
 }
 
@@ -184,6 +233,98 @@ type SyncResult {
   errorMessage: String
 }
 
+enum PersistMode {
+  UPSERT
+  RECONCILE
+}
+
+input PersistDocumentInput {
+  id: ID!
+  saleId: ID
+  data: JSON!
+}
+
+type PersistResult {
+  storeId: ID!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type FetchAndPersistSaleItemsResult {
+  storeId: ID!
+  saleId: ID!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+scalar JSON
+
+type ContaAzulRestFetchResult {
+  storeId: ID!
+  fetchedAt: String!
+  items: [JSON!]!
+}
+
+enum SyncMode {
+  BACKFILL
+  INCREMENTAL
+}
+
+enum SyncPhase {
+  BACKFILL
+  INCREMENTAL
+  DISCONNECT
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+type ResourceProgress {
+  resource: String!
+  total: Int
+  completed: Int!
+  status: SyncStatus!
+  errorMessage: String
+}
+
+type StoreSyncJob {
+  jobId: ID!
+  tenantId: String!
+  storeId: String!
+  phase: SyncPhase!
+  status: SyncStatus!
+  percentage: Int!
+  resources: [ResourceProgress!]!
+  startedAt: String!
+  updatedAt: String!
+  errorMessage: String
+}
+
+input ResourceProgressInput {
+  resource: String!
+  total: Int
+  completed: Int!
+  status: SyncStatus!
+  errorMessage: String
+}
+
+input StoreSyncProgressInput {
+  jobId: ID!
+  tenantId: String!
+  storeId: String!
+  phase: SyncPhase!
+  status: SyncStatus!
+  percentage: Int!
+  resources: [ResourceProgressInput!]!
+  errorMessage: String
+}
+
 type ReconcileStoreResult {
   storeId: String!
   synced: Int!
@@ -214,10 +355,64 @@ type DisconnectStoreDataResult {
   deleted: Int!
 }
 
+type DeletePhaseResult {
+  deleted: Int!
+}
+
+type CleanupStoreDisconnectMetadataResult {
+  ok: Boolean!
+}
+
+type FinalizeStoreDisconnectResult {
+  success: Boolean!
+}
+
+type SyncResultGQL {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type SyncSalesResultGQL {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+  changedSaleIds: [String!]!
+}
+
+type SyncSaleItemsResultGQL {
+  storeId: String!
+  saleId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type ConnectedStoreForSync {
+  tenantId: String!
+  storeId: String!
+}
+
+type EnqueueResult {
+  enqueued: Boolean!
+  jobId: String!
+}
+
 enum WorkerSyncEventType {
   RECONCILE_STARTED
   RECONCILE_COMPLETED
   RECONCILE_FAILED
+  SALES_RECONCILE_STARTED
+  SALES_RECONCILE_COMPLETED
+  SALES_RECONCILE_FAILED
+  SALE_ITEMS_RECONCILE_STARTED
+  SALE_ITEMS_RECONCILE_COMPLETED
+  SALE_ITEMS_RECONCILE_FAILED
+  VENDEDORES_RECONCILE_STARTED
+  VENDEDORES_RECONCILE_COMPLETED
+  VENDEDORES_RECONCILE_FAILED
   STORE_DATA_DELETED
   RECONCILE_CYCLE_COMPLETED
   WORKER_LOG
@@ -297,6 +492,221 @@ type ContaAzulCategory {
   tipo: String!
 }
 
+input SaleItem_bool_exp {
+  _and: [SaleItem_bool_exp!]
+  _or: [SaleItem_bool_exp!]
+  _not: SaleItem_bool_exp
+  id: IDComparisonExp
+  storeId: IDComparisonExp
+  saleId: IDComparisonExp
+  produtoId: IDComparisonExp
+  nome: StringComparisonExp
+  descricao: StringComparisonExp
+  tipo: StringComparisonExp
+  quantidade: FloatComparisonExp
+  valor: FloatComparisonExp
+  custo: FloatComparisonExp
+}
+
+enum SaleItem_select_column {
+  id
+  storeId
+  saleId
+  produtoId
+  nome
+  descricao
+  tipo
+  quantidade
+  valor
+  custo
+}
+
+input SaleItem_order_by {
+  id: order_by
+  storeId: order_by
+  saleId: order_by
+  produtoId: order_by
+  nome: order_by
+  descricao: order_by
+  tipo: order_by
+  quantidade: order_by
+  valor: order_by
+  custo: order_by
+}
+
+type SaleItemEdge {
+  cursor: String!
+  node: SaleItem!
+}
+
+type SaleItemConnection {
+  edges: [SaleItemEdge!]!
+  nodes: [SaleItem!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+  diagnostics: [CategoryQueryDiagnostic!]!
+}
+
+type SaleItem_aggregate_fields {
+  count: Int!
+}
+
+type SaleItem_aggregate {
+  aggregate: SaleItem_aggregate_fields
+  nodes: [SaleItem!]!
+}
+
+type SaleItem {
+  id: ID!
+  storeId: ID!
+  saleId: ID!
+  produtoId: ID
+  nome: String
+  descricao: String
+  tipo: String
+  quantidade: Float
+  valor: Float
+  custo: Float
+}
+
+input Sale_bool_exp {
+  _and: [Sale_bool_exp!]
+  _or: [Sale_bool_exp!]
+  _not: Sale_bool_exp
+  id: IDComparisonExp
+  storeId: IDComparisonExp
+  numero: IntComparisonExp
+  data: StringComparisonExp
+  dataAlteracao: StringComparisonExp
+  tipo: StringComparisonExp
+  situacaoNome: StringComparisonExp
+  situacaoDescricao: StringComparisonExp
+  clienteNome: StringComparisonExp
+  clienteId: StringComparisonExp
+  origem: StringComparisonExp
+}
+
+enum Sale_select_column {
+  id
+  storeId
+  numero
+  data
+  dataAlteracao
+  tipo
+  situacaoNome
+  situacaoDescricao
+  clienteNome
+  clienteId
+  origem
+}
+
+input Sale_order_by {
+  id: order_by
+  storeId: order_by
+  numero: order_by
+  data: order_by
+  dataAlteracao: order_by
+  tipo: order_by
+  situacaoNome: order_by
+  situacaoDescricao: order_by
+  clienteNome: order_by
+  clienteId: order_by
+  origem: order_by
+}
+
+type SaleEdge {
+  cursor: String!
+  node: Sale!
+}
+
+type SaleConnection {
+  edges: [SaleEdge!]!
+  nodes: [Sale!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+  diagnostics: [CategoryQueryDiagnostic!]!
+}
+
+type Sale_aggregate_fields {
+  count: Int!
+}
+
+type Sale_aggregate {
+  aggregate: Sale_aggregate_fields
+  nodes: [Sale!]!
+}
+
+type Sale {
+  id: ID!
+  storeId: ID!
+  numero: Int
+  data: String
+  dataAlteracao: String
+  tipo: String
+  situacaoNome: String
+  situacaoDescricao: String
+  clienteNome: String
+  clienteId: String
+  origem: String
+}
+
+input Vendedor_bool_exp {
+  _and: [Vendedor_bool_exp!]
+  _or: [Vendedor_bool_exp!]
+  _not: Vendedor_bool_exp
+  id: IDComparisonExp
+  storeId: IDComparisonExp
+  nome: StringComparisonExp
+  email: StringComparisonExp
+  ativo: BooleanComparisonExp
+}
+
+enum Vendedor_select_column {
+  id
+  storeId
+  nome
+  email
+  ativo
+}
+
+input Vendedor_order_by {
+  id: order_by
+  storeId: order_by
+  nome: order_by
+  email: order_by
+  ativo: order_by
+}
+
+type VendedorEdge {
+  cursor: String!
+  node: Vendedor!
+}
+
+type VendedorConnection {
+  edges: [VendedorEdge!]!
+  nodes: [Vendedor!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+  diagnostics: [CategoryQueryDiagnostic!]!
+}
+
+type Vendedor_aggregate_fields {
+  count: Int!
+}
+
+type Vendedor_aggregate {
+  aggregate: Vendedor_aggregate_fields
+  nodes: [Vendedor!]!
+}
+
+type Vendedor {
+  id: ID!
+  storeId: ID!
+  nome: String
+  email: String
+  ativo: Boolean
+}
+
 enum link__Purpose {
   """
   `SECURITY` features provide metadata necessary to securely resolve fields.
@@ -319,8 +729,10 @@ type _Service {
   sdl: String
 }
 
-union _Entity = ContaAzulCategory
+union _Entity = ContaAzulCategory | Sale | SaleItem | Vendedor
 
 type Subscription {
+  storeSyncProgress(jobId: ID!): StoreSyncJob!
+  storeSyncProgressByStore(storeId: ID!): StoreSyncJob!
   contaAzulWorkerSyncEvents(storeId: ID): WorkerSyncEvent!
 }

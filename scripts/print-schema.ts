@@ -12,4 +12,9 @@ const schema = await buildEntitySchema()
 const sdl = printSchema(schema)
 writeFileSync(outputPath, sdl, 'utf8')
 console.log(`Schema written to ${outputPath}`)
-await disconnectCredentialsRedis()
+try {
+  await disconnectCredentialsRedis()
+} catch {
+  // Schema export does not require a live Redis connection.
+}
+process.exit(0)

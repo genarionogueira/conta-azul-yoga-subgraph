@@ -1,0 +1,57 @@
+enum PersistMode {
+  UPSERT
+  RECONCILE
+}
+
+input PersistDocumentInput {
+  id: ID!
+  saleId: ID
+  data: JSON!
+}
+
+type PersistResult {
+  storeId: ID!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type FetchAndPersistSaleItemsResult {
+  storeId: ID!
+  saleId: ID!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+extend type Mutation {
+  persistSales(
+    tenantId: ID!
+    storeId: ID!
+    documents: [PersistDocumentInput!]!
+    mode: PersistMode = UPSERT
+    trigger: String
+  ): PersistResult!
+  persistSaleItems(
+    tenantId: ID!
+    storeId: ID!
+    saleId: ID!
+    documents: [PersistDocumentInput!]!
+    mode: PersistMode = UPSERT
+    trigger: String
+  ): PersistResult!
+  persistVendedores(
+    tenantId: ID!
+    storeId: ID!
+    documents: [PersistDocumentInput!]!
+    mode: PersistMode = UPSERT
+    trigger: String
+  ): PersistResult!
+  fetchAndPersistSaleItems(
+    tenantId: ID!
+    storeId: ID!
+    saleId: ID!
+    mode: PersistMode = RECONCILE
+    trigger: String
+  ): FetchAndPersistSaleItemsResult!
+}

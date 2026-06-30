@@ -10,6 +10,11 @@ import {
 
 const CREDENTIALS_CONNECTED_PREFIX = 'conta_azul:connected_stores:'
 
+function isValidTenantId(tenantId: string): boolean {
+  const trimmed = tenantId.trim()
+  return trimmed.length > 0 && trimmed !== '*'
+}
+
 export class NoopWorkerSyncEventSubscriber {
   async start(): Promise<void> {}
   async stop(): Promise<void> {}
@@ -47,7 +52,7 @@ export class WorkerSyncEventSubscriber {
   private async discoverTenantIds(): Promise<string[]> {
     const tenantIds = new Set<string>()
     const defaultTenant = process.env.DEFAULT_DEV_TENANT_ID?.trim()
-    if (defaultTenant) tenantIds.add(defaultTenant)
+    if (defaultTenant && isValidTenantId(defaultTenant)) tenantIds.add(defaultTenant)
 
     let cursor = '0'
     do {
@@ -61,7 +66,8 @@ export class WorkerSyncEventSubscriber {
       cursor = nextCursor
       for (const key of keys) {
         if (key.startsWith(WORKER_EVENT_STREAM_PREFIX)) {
-          tenantIds.add(key.slice(WORKER_EVENT_STREAM_PREFIX.length))
+          const tenantId = key.slice(WORKER_EVENT_STREAM_PREFIX.length)
+          if (isValidTenantId(tenantId)) tenantIds.add(tenantId)
         }
       }
     } while (cursor !== '0')
@@ -78,7 +84,8 @@ export class WorkerSyncEventSubscriber {
       cursor = nextCursor
       for (const key of keys) {
         if (key.startsWith(CREDENTIALS_CONNECTED_PREFIX)) {
-          tenantIds.add(key.slice(CREDENTIALS_CONNECTED_PREFIX.length))
+          const tenantId = key.slice(CREDENTIALS_CONNECTED_PREFIX.length)
+          if (isValidTenantId(tenantId)) tenantIds.add(tenantId)
         }
       }
     } while (cursor !== '0')
@@ -137,9 +144,12 @@ export class WorkerSyncEventSubscriber {
   private async runLoop(initialTenantIds: string[]): Promise<void> {
     const tenantIds = new Set(initialTenantIds)
     while (this.running) {
-      if (tenantIds.size === 0) {
-        const discovered = await this.discoverTenantIds()
-        for (const tenantId of discovered) tenantIds.add(tenantId)
+      const discovered = await this.discoverTenantIds()
+      for (const tenantId of discovered) {
+        if (!tenantIds.has(tenantId)) {
+          tenantIds.add(tenantId)
+          await this.seedTenant(tenantId)
+        }
       }
 
       const streams = [...tenantIds]

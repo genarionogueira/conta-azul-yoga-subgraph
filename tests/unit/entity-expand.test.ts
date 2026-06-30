@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parse, Kind, type ObjectTypeDefinitionNode } from 'graphql'
 import { parseEntityDef } from '../../src/lib/entity/parse-entity.js'
 import { expandEntitySDL } from '../../src/lib/entity/expand.js'
+import { connectionQueryName } from '../../src/lib/entity/naming.js'
 import type { EntityDef } from '../../src/lib/entity/types.js'
 
 const categoryEntity: EntityDef = {
@@ -13,6 +14,21 @@ const categoryEntity: EntityDef = {
     { name: 'tipo', type: 'String', nullable: false },
   ],
   mongo: { collection: 'conta_azul_categories' },
+  rest: null,
+  tenant: { field: 'storeId' },
+  cache: null,
+  key: { fields: 'id storeId' },
+}
+
+const saleEntity: EntityDef = {
+  name: 'Sale',
+  fields: [
+    { name: 'id', type: 'ID', nullable: false },
+    { name: 'storeId', type: 'ID', nullable: false },
+    { name: 'numero', type: 'Int', nullable: true },
+    { name: 'tipo', type: 'String', nullable: true },
+  ],
+  mongo: { collection: 'sales' },
   rest: null,
   tenant: { field: 'storeId' },
   cache: null,
@@ -93,14 +109,21 @@ describe('expandEntitySDL', () => {
     expect(sdl).not.toContain('syncContaAzulCategories')
   })
 
+  it('GivenSalesEntityWithoutRest_WhenExpanding_ThenEmitsQueryFieldsOnly', () => {
+    const sdl = expandEntitySDL(saleEntity)
+    expect(sdl).toContain('sales(')
+    expect(sdl).toContain('salesAggregate')
+    expect(sdl).not.toContain('syncSales')
+  })
+
   it('GivenRestDirectiveOnOtherEntity_WhenExpanding_ThenEmitsSyncMutation', () => {
     const entityWithRest: EntityDef = {
       ...categoryEntity,
-      name: 'ContaAzulSale',
+      name: 'Sale',
       rest: { adapter: 'contaAzul', list: 'listVendas' },
     }
     const sdl = expandEntitySDL(entityWithRest)
-    expect(sdl).toContain('syncContaAzulSales(storeId: ID): SyncResult!')
+    expect(sdl).toContain('syncSales(storeId: ID): SyncResult!')
   })
 
   it('GivenKeyDirective_WhenExpanding_ThenKeyPreservedOnObjectType', () => {
@@ -150,5 +173,9 @@ describe('expandEntitySDL', () => {
   it('GivenNoKeyDirective_WhenExpanding_ThenObjectTypeHasNoKeyDirective', () => {
     const sdl = expandEntitySDL({ ...categoryEntity, key: null })
     expect(sdl).not.toContain('@key')
+  })
+
+  it('GivenVendedorEntity_WhenNaming_ThenUsesPortuguesePlural', () => {
+    expect(connectionQueryName('Vendedor')).toBe('vendedores')
   })
 })

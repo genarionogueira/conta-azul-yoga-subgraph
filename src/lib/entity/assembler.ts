@@ -178,23 +178,83 @@ export async function buildEntitySchema(
   const { completeOAuthCallback } = await import('../../schema/auth/resolvers/Mutation/completeOAuthCallback.js')
   const { disconnectStore } = await import('../../schema/auth/resolvers/Mutation/disconnectStore.js')
   const { updateConnection } = await import('../../schema/auth/resolvers/Mutation/updateConnection.js')
+  const { updateStoreId } = await import('../../schema/auth/resolvers/Mutation/updateStoreId.js')
   const { syncContaAzulCategories } = await import(
     '../../schema/categories/resolvers/Mutation/syncContaAzulCategories.js'
+  )
+  const { syncContaAzulSales } = await import(
+    '../../schema/sales/resolvers/Mutation/syncContaAzulSales.js'
+  )
+  const { syncContaAzulSaleItems } = await import(
+    '../../schema/sale-items/resolvers/Mutation/syncContaAzulSaleItems.js'
   )
   const {
     reconcileStore,
     reconcileAll,
     disconnectStoreData,
   } = await import('../../schema/sync/resolvers/Mutation/syncMutations.js')
+  const {
+    deleteStoreSaleItemsPhase,
+    deleteStoreSalesPhase,
+    deleteStoreCategoriesPhase,
+    deleteStoreVendedoresPhase,
+    cleanupStoreDisconnectMetadataMutation,
+    finalizeStoreDisconnect,
+  } = await import('../../schema/sync/resolvers/Mutation/disconnectMutations.js')
+  const {
+    syncConnectedStores,
+    syncCategories,
+    syncSales,
+    syncSaleItems,
+    enqueueReconcileStore,
+  } = await import('../../schema/sync/resolvers/Mutation/granularSyncMutations.js')
+  const { reportStoreSyncProgress } = await import(
+    '../../schema/sync/resolvers/Mutation/reportStoreSyncProgress.js'
+  )
+  const {
+    storeSyncJob,
+    activeStoreSyncJob,
+    contaAzulSalesWatermark,
+    contaAzulActiveBackfill,
+  } = await import('../../schema/sync/resolvers/Query/storeSyncProgressQueries.js')
+  const {
+    storeSyncProgressSubscription,
+    storeSyncProgressSubscriptionResolve,
+  } = await import('../../schema/sync/resolvers/Subscription/storeSyncProgress.js')
+  const {
+    storeSyncProgressByStoreSubscription,
+    storeSyncProgressByStoreSubscriptionResolve,
+  } = await import('../../schema/sync/resolvers/Subscription/storeSyncProgressByStore.js')
+  const {
+    contaAzulRestVendaBusca,
+    contaAzulRestVendaItens,
+    contaAzulRestVendaVendedores,
+  } = await import('../../schema/rest/resolvers/Query/restFetchQueries.js')
+  const {
+    persistSales,
+    persistSaleItems,
+    persistVendedores,
+    fetchAndPersistSaleItems,
+  } = await import('../../schema/persist/resolvers/Mutation/persistMutations.js')
+  const { JSONScalar } = await import('../scalars/json.js')
 
   const manualResolvers: GraphQLResolverMap<unknown> = {
+    JSON: JSONScalar,
     Query: {
       authorizationUrl: bindAppContextResolver(authorizationUrl),
       contaAzulAuthConfig: bindAppContextResolver(contaAzulAuthConfig),
       connectionStatus: bindAppContextResolver(connectionStatus),
       connectedStores: bindAppContextResolver(connectedStores),
+      syncConnectedStores: bindAppContextResolver(syncConnectedStores),
       connections: bindAppContextResolver(connections),
       contaAzulWorkerSyncEvents: bindAppContextResolver(contaAzulWorkerSyncEvents),
+      storeSyncJob: bindAppContextResolver(storeSyncJob),
+      activeStoreSyncJob: bindAppContextResolver(activeStoreSyncJob),
+      contaAzulSalesWatermark: bindAppContextResolver(contaAzulSalesWatermark),
+      contaAzulActiveBackfill: bindAppContextResolver(contaAzulActiveBackfill),
+      contaAzulRestVendaBusca: bindAppContextResolver(contaAzulRestVendaBusca),
+      contaAzulRestVendaItens: bindAppContextResolver(contaAzulRestVendaItens),
+      contaAzulRestVendaVendedores: bindAppContextResolver(contaAzulRestVendaVendedores),
       hello,
     },
     Mutation: {
@@ -202,10 +262,30 @@ export async function buildEntitySchema(
       completeOAuthCallback: bindAppContextResolver(completeOAuthCallback),
       disconnectStore: bindAppContextResolver(disconnectStore),
       updateConnection: bindAppContextResolver(updateConnection),
+      updateStoreId: bindAppContextResolver(updateStoreId),
       syncContaAzulCategories: bindAppContextResolver(syncContaAzulCategories),
+      syncContaAzulSales: bindAppContextResolver(syncContaAzulSales),
+      syncContaAzulSaleItems: bindAppContextResolver(syncContaAzulSaleItems),
       reconcileStore: bindAppContextResolver(reconcileStore),
       reconcileAll: bindAppContextResolver(reconcileAll),
       disconnectStoreData: bindAppContextResolver(disconnectStoreData),
+      deleteStoreSaleItemsPhase: bindAppContextResolver(deleteStoreSaleItemsPhase),
+      deleteStoreSalesPhase: bindAppContextResolver(deleteStoreSalesPhase),
+      deleteStoreCategoriesPhase: bindAppContextResolver(deleteStoreCategoriesPhase),
+      deleteStoreVendedoresPhase: bindAppContextResolver(deleteStoreVendedoresPhase),
+      cleanupStoreDisconnectMetadata: bindAppContextResolver(
+        cleanupStoreDisconnectMetadataMutation
+      ),
+      finalizeStoreDisconnect: bindAppContextResolver(finalizeStoreDisconnect),
+      syncCategories: bindAppContextResolver(syncCategories),
+      syncSales: bindAppContextResolver(syncSales),
+      syncSaleItems: bindAppContextResolver(syncSaleItems),
+      enqueueReconcileStore: bindAppContextResolver(enqueueReconcileStore),
+      reportStoreSyncProgress: bindAppContextResolver(reportStoreSyncProgress),
+      persistSales: bindAppContextResolver(persistSales),
+      persistSaleItems: bindAppContextResolver(persistSaleItems),
+      persistVendedores: bindAppContextResolver(persistVendedores),
+      fetchAndPersistSaleItems: bindAppContextResolver(fetchAndPersistSaleItems),
     },
     Subscription: {
       contaAzulWorkerSyncEvents: {
@@ -214,6 +294,14 @@ export async function buildEntitySchema(
           contaAzulWorkerSyncEventsSubscriptionResolve(
             event as Parameters<typeof contaAzulWorkerSyncEventsSubscriptionResolve>[0]
           ),
+      },
+      storeSyncProgress: {
+        subscribe: bindAppContextResolver(storeSyncProgressSubscription),
+        resolve: (event: unknown) => storeSyncProgressSubscriptionResolve(event),
+      },
+      storeSyncProgressByStore: {
+        subscribe: bindAppContextResolver(storeSyncProgressByStoreSubscription),
+        resolve: (event: unknown) => storeSyncProgressByStoreSubscriptionResolve(event),
       },
     },
   }

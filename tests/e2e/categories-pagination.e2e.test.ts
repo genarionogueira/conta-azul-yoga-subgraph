@@ -1,5 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { gqlClient } from './helpers/gql-client.js'
+import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
+import { clearTenantRateLimits } from './helpers/redis-e2e.js'
+import { clearStoreCategories } from './helpers/mongo-e2e.js'
+import { syncStoreCategoriesViaMutation } from './helpers/worker-sync.js'
+import { removePriorityStubs } from './helpers/wiremock-admin.js'
+import { reseedDefaultE2eConnections } from './setup.js'
+
+function getRedisUrl(): string {
+  const base = process.env.E2E_REDIS_URL
+  if (!base) throw new Error('E2E_REDIS_URL not set — globalSetup may not have run')
+  return base
+}
 
 interface ContaAzulCategoryConnection {
   nodes: Array<{ id: string; nome?: string; tipo?: string }>
@@ -17,6 +29,17 @@ interface ContaAzulCategoryConnection {
 const SEEDED_STORES_WHERE = `storeId: { _in: ["store-1", "store-2"] }`
 
 describe('E2E: Relay pagination — categories domain', () => {
+  beforeAll(async () => {
+    const redisUrl = getRedisUrl()
+    await removePriorityStubs()
+    await clearTenantRateLimits(redisUrl, DEFAULT_DEV_TENANT_ID)
+    await reseedDefaultE2eConnections(redisUrl)
+    await clearStoreCategories('store-1', DEFAULT_DEV_TENANT_ID)
+    await clearStoreCategories('store-2', DEFAULT_DEV_TENANT_ID)
+    await syncStoreCategoriesViaMutation('store-1', DEFAULT_DEV_TENANT_ID)
+    await syncStoreCategoriesViaMutation('store-2', DEFAULT_DEV_TENANT_ID)
+  })
+
   it('should return first 3 items with hasNextPage=true when more items exist', async () => {
     const data = await gqlClient<{ contaAzulCategories: ContaAzulCategoryConnection }>(
       `query {
@@ -40,8 +63,8 @@ describe('E2E: Relay pagination — categories domain', () => {
   it('should return next page using after cursor', async () => {
     const first = await gqlClient<{ contaAzulCategories: ContaAzulCategoryConnection }>(
       `query {
-        contaAzulCategories(first: 2) {
-          edges { cursor node { id } }
+        contaAzulCategories(first: 2, where: { ${SEEDED_STORES_WHERE} }) {
+          edges { cursor node { id storeId } }
           pageInfo { endCursor }
         }
       }`
@@ -50,14 +73,14 @@ describe('E2E: Relay pagination — categories domain', () => {
     const endCursor = first.contaAzulCategories.pageInfo.endCursor!
     const second = await gqlClient<{ contaAzulCategories: ContaAzulCategoryConnection }>(
       `query {
-        contaAzulCategories(first: 2, after: "${endCursor}") {
-          edges { cursor node { id } }
+        contaAzulCategories(first: 2, after: "${endCursor}", where: { ${SEEDED_STORES_WHERE} }) {
+          edges { cursor node { id storeId } }
           pageInfo { hasNextPage hasPreviousPage }
         }
       }`
     )
-    const firstIds = first.contaAzulCategories.edges.map((e) => e.node.id)
-    const secondIds = second.contaAzulCategories.edges.map((e) => e.node.id)
+    const firstIds = first.contaAzulCategories.edges.map((e) => `${e.node.id}:${e.node.storeId ?? ''}`)
+    const secondIds = second.contaAzulCategories.edges.map((e) => `${e.node.id}:${e.node.storeId ?? ''}`)
     expect(secondIds.length).toBeGreaterThan(0)
     expect(firstIds.every((id) => !secondIds.includes(id))).toBe(true)
     expect(second.contaAzulCategories.pageInfo.hasPreviousPage).toBe(true)

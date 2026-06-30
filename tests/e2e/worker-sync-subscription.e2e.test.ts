@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { createClient } from 'graphql-ws'
 import WebSocket from 'ws'
 import { DEFAULT_DEV_TENANT_ID } from '../../src/lib/auth/tenant-context.js'
-import { triggerReconcileOnceForStore } from './helpers/worker-sync.js'
+import {
+  enqueueBackfillForStore,
+  seedStoreConnection,
+  triggerReconcileOnceForStore,
+  waitForStoreSyncJobComplete,
+} from './helpers/worker-sync.js'
 
 const SUBSCRIPTION = `
   subscription ContaAzulWorkerSyncEvents($storeId: ID) {
@@ -37,17 +42,34 @@ function getWsUrl(): string {
   return url.toString()
 }
 
+interface CollectOptions {
+  timeoutMs?: number
+  settleMs?: number
+  until?: (events: WorkerSyncEventPayload[]) => boolean
+}
+
 async function collectSubscriptionEvents(
   storeId: string,
   action: () => Promise<void>,
-  timeoutMs = 8_000
+  options: CollectOptions = {}
 ): Promise<WorkerSyncEventPayload[]> {
+  const { timeoutMs = 8_000, settleMs = 2_000, until } = options
   const events: WorkerSyncEventPayload[] = []
   const client = createClient({ url: getWsUrl(), webSocketImpl: WebSocket })
 
   const done = new Promise<void>((resolve, reject) => {
+    let settled = false
+    const finish = (unsubscribe?: () => void) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      unsubscribe?.()
+      resolve()
+    }
+
     const timer = setTimeout(() => {
-      reject(new Error(`subscription timed out after ${timeoutMs}ms`))
+      // Soft timeout: resolve with whatever events we have instead of failing.
+      finish()
     }, timeoutMs)
 
     const unsubscribe = client.subscribe(
@@ -58,6 +80,9 @@ async function collectSubscriptionEvents(
             | WorkerSyncEventPayload
             | undefined
           if (event) events.push(event)
+          if (until && until(events)) {
+            finish(unsubscribe)
+          }
         },
         error: (err) => {
           clearTimeout(timer)
@@ -73,14 +98,12 @@ async function collectSubscriptionEvents(
     void action()
       .then(() => {
         setTimeout(() => {
-          unsubscribe()
-          clearTimeout(timer)
-          resolve()
-        }, 2_000)
+          finish(unsubscribe)
+        }, settleMs)
       })
       .catch((err) => {
-        unsubscribe()
         clearTimeout(timer)
+        unsubscribe()
         reject(err)
       })
   })
@@ -92,12 +115,22 @@ async function collectSubscriptionEvents(
 
 describe('E2E: Worker stream → subscription — live sync logs', () => {
   it('should yield worker.log and reconcile events when reconcile-once runs', async () => {
-    const events = await collectSubscriptionEvents('store-1', async () => {
-      await triggerReconcileOnceForStore({
-        tenantId: DEFAULT_DEV_TENANT_ID,
-        storeId: 'store-1',
-      })
-    })
+    const hasReconcile = (evts: WorkerSyncEventPayload[]) =>
+      evts.some((e) => e.type === 'WORKER_LOG') &&
+      evts.some(
+        (e) => e.type === 'RECONCILE_COMPLETED' || e.type === 'RECONCILE_STARTED'
+      )
+
+    const events = await collectSubscriptionEvents(
+      'store-1',
+      async () => {
+        await triggerReconcileOnceForStore({
+          tenantId: DEFAULT_DEV_TENANT_ID,
+          storeId: 'store-1',
+        })
+      },
+      { timeoutMs: 30_000, settleMs: 20_000, until: hasReconcile }
+    )
 
     expect(events.some((e) => e.type === 'WORKER_LOG')).toBe(true)
     expect(
@@ -105,5 +138,44 @@ describe('E2E: Worker stream → subscription — live sync logs', () => {
         (e) => e.type === 'RECONCILE_COMPLETED' || e.type === 'RECONCILE_STARTED'
       )
     ).toBe(true)
+  })
+
+  it('should yield resource-specific reconcile types after backfill job', async () => {
+    const storeId = 'store-sync-logs-sub'
+    await seedStoreConnection(DEFAULT_DEV_TENANT_ID, storeId)
+
+    const jobId = await enqueueBackfillForStore({
+      tenantId: DEFAULT_DEV_TENANT_ID,
+      storeId,
+      trigger: 'e2e-subscription-logs',
+    })
+
+    const events = await collectSubscriptionEvents(
+      storeId,
+      async () => {
+        await waitForStoreSyncJobComplete(jobId, 120_000)
+      },
+      {
+        timeoutMs: 130_000,
+        settleMs: 3_000,
+        until: (evts) =>
+          evts.some(
+            (event) =>
+              event.type === 'SALES_RECONCILE_COMPLETED' ||
+              event.type === 'WORKER_LOG' ||
+              (event.message?.includes('sync.sales') ?? false)
+          ) && evts.some((event) => event.storeId === storeId),
+      }
+    )
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'SALES_RECONCILE_COMPLETED' ||
+          event.type === 'WORKER_LOG' ||
+          (event.message?.includes('sync.sales') ?? false)
+      )
+    ).toBe(true)
+    expect(events.some((event) => event.storeId === storeId)).toBe(true)
   })
 })

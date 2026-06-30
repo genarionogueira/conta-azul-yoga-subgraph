@@ -13,7 +13,7 @@ import { runWithRequestAuth } from './lib/auth/request-auth-store.js'
 import { buildWsAppContext } from './lib/auth/ws-context.js'
 import { buildContext, type AppContext } from './context.js'
 import { initMongo, getDb, closeMongo } from './lib/mongo/connection.js'
-import { ensureCategoriesIndexes, ensureConnectionsIndexes } from './lib/mongo/indexes.js'
+import { ensureCategoriesIndexes, ensureConnectionsIndexes, ensureSaleItemIndexes, ensureSalesIndexes, ensureStoreSyncJobIndexes, ensureVendedoresIndexes } from './lib/mongo/indexes.js'
 import {
   startWorkerSyncEventSubscriber,
   stopWorkerSyncEventSubscriber,
@@ -173,7 +173,11 @@ const connectRoutesDeps = {
 async function main(): Promise<void> {
   await initMongo()
   await ensureCategoriesIndexes(getDb())
+  await ensureSalesIndexes(getDb())
+  await ensureSaleItemIndexes(getDb())
+  await ensureVendedoresIndexes(getDb())
   await ensureConnectionsIndexes(getDb())
+  await ensureStoreSyncJobIndexes(getDb())
   await startWorkerSyncEventSubscriber()
 
   const schema = await schemaPromise

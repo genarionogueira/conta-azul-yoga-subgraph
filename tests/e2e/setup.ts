@@ -16,7 +16,7 @@ const TEST_TOKEN = {
   connected_at: Date.now(),
 }
 
-async function seedCategoriesViaWorker(
+async function seedWorkerSyncedData(
   workerUrl: string,
   mongoUrl: string,
   tenantId: string,
@@ -34,19 +34,60 @@ async function seedCategoriesViaWorker(
   const client = new MongoClient(mongoUrl)
   try {
     const db = client.db()
-    const deadline = Date.now() + 30_000
+    const deadline = Date.now() + 60_000
+    const expectedPerStore = 2
+    const expectedSaleItemsPerStore = 3
     while (Date.now() < deadline) {
-      const count = await db.collection('conta_azul_categories').countDocuments({
+      const categoryCount = await db.collection('conta_azul_categories').countDocuments({
         tenantId,
         storeId: { $in: storeIds },
       })
-      if (count >= storeIds.length * 2) {
+      const salesCount = await db.collection('sales').countDocuments({
+        tenantId,
+        storeId: { $in: storeIds },
+      })
+      const saleItemsCount = await db.collection('sale_items').countDocuments({
+        tenantId,
+        storeId: { $in: storeIds },
+      })
+      const perStoreReady = await Promise.all(
+        storeIds.map(async (storeId) => {
+          const [categories, sales, items] = await Promise.all([
+            db.collection('conta_azul_categories').countDocuments({ tenantId, storeId }),
+            db.collection('sales').countDocuments({ tenantId, storeId }),
+            db.collection('sale_items').countDocuments({ tenantId, storeId }),
+          ])
+          return (
+            categories >= expectedPerStore &&
+            sales >= expectedPerStore &&
+            items >= expectedSaleItemsPerStore
+          )
+        })
+      )
+      if (
+        categoryCount >= storeIds.length * expectedPerStore &&
+        salesCount >= storeIds.length * expectedPerStore &&
+        saleItemsCount >= storeIds.length * expectedSaleItemsPerStore &&
+        perStoreReady.every(Boolean)
+      ) {
         return
       }
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
+    const categoryCount = await db.collection('conta_azul_categories').countDocuments({
+      tenantId,
+      storeId: { $in: storeIds },
+    })
+    const salesCount = await db.collection('sales').countDocuments({
+      tenantId,
+      storeId: { $in: storeIds },
+    })
+    const saleItemsCount = await db.collection('sale_items').countDocuments({
+      tenantId,
+      storeId: { $in: storeIds },
+    })
     throw new Error(
-      `E2E setup: worker did not sync ${storeIds.length * 2} categories within 30s (got partial data)`
+      `E2E setup: worker did not sync expected data within 60s (categories=${categoryCount}, sales=${salesCount}, saleItems=${saleItemsCount}, expected=${storeIds.length * expectedPerStore} categories/sales and ${storeIds.length * expectedSaleItemsPerStore} sale items)`
     )
   } finally {
     await client.close()
@@ -77,6 +118,10 @@ export async function reseedDefaultE2eConnections(redisUrl: string): Promise<voi
 }
 
 export async function setup(): Promise<void> {
+  if (!process.env.ZITADEL_HOST_IP?.trim()) {
+    process.env.ZITADEL_HOST_IP = '127.0.0.1'
+  }
+
   compose = await new DockerComposeEnvironment(ROOT, [
     'compose.yaml',
     'compose.dev.yaml',
@@ -118,7 +163,7 @@ export async function setup(): Promise<void> {
   await seedTenantConnection(redis, DEFAULT_DEV_TENANT_ID, 'store-2')
   await redis.quit()
 
-  await seedCategoriesViaWorker(workerUrl, mongoUrl, DEFAULT_DEV_TENANT_ID, [
+  await seedWorkerSyncedData(workerUrl, mongoUrl, DEFAULT_DEV_TENANT_ID, [
     'store-1',
     'store-2',
   ])

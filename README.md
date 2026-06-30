@@ -13,13 +13,13 @@ make test-unit
 make test-e2e
 ```
 
-Compose layers: `compose.yaml` (base) + `compose.dev.yaml` (config, Zitadel auth on) + `compose.override.local.yaml` (personal).
+Compose layers: `compose.yaml` (base) + `compose.dev.yaml` (config, `JWT_REQUIRED=false` for local GraphiQL) + `compose.override.local.yaml` (personal).
 
 The bundled **avcd-worker** runs a FastAPI scheduler that calls `reconcileAll` on this subgraph every 60 seconds (configurable via `RECONCILE_INTERVAL_SECONDS`). Yoga owns OAuth credentials, category reconcile (Conta Azul API → MongoDB), and Redis worker event streams.
 
 Connect UI: http://localhost:4000/connect — OAuth saves tokens in Redis; category sync is handled by the worker scheduler calling yoga GraphQL (up to ~1 minute delay).
 
-Unauthenticated GraphQL returns 401 locally (same as dev deploy). E2E tests use `compose.override.e2e.yaml` with `JWT_REQUIRED=false`.
+GraphiQL at http://localhost:4000/graphql works without an `Authorization` header (`JWT_REQUIRED=false` in `compose.dev.yaml`). Unauthenticated requests use tenant `dev-tenant` (`DEFAULT_DEV_TENANT_ID`). Deployed dev still requires Zitadel JWT — use **web-dash** (`NEXT_PUBLIC_GRAPHQL_BACKEND=yoga`) or `make sync-auth` when testing auth locally. E2E tests use `compose.override.e2e.yaml` with the same auth-off setting.
 
 ## Credentials (Redis)
 
@@ -31,7 +31,7 @@ OAuth tokens are stored per tenant:
 | `conta_azul:connected_stores:{tenantId}` | ZSET index of connected store IDs |
 | `conta_azul:oauth:state:{state}` | OAuth state (includes `tenantId`) |
 
-When `JWT_REQUIRED=false` (E2E only), the default tenant is `dev-tenant` (`DEFAULT_DEV_TENANT_ID`).
+When `JWT_REQUIRED=false` (local `make dev` and E2E), the default tenant is `dev-tenant` (`DEFAULT_DEV_TENANT_ID`).
 
 ### Migrating legacy keys (dev only)
 

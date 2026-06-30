@@ -28,8 +28,81 @@ type DisconnectStoreDataResult {
   deleted: Int!
 }
 
+type DeletePhaseResult {
+  deleted: Int!
+}
+
+type CleanupStoreDisconnectMetadataResult {
+  ok: Boolean!
+}
+
+type FinalizeStoreDisconnectResult {
+  success: Boolean!
+}
+
+type SyncResultGQL {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type SyncSalesResultGQL {
+  storeId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+  changedSaleIds: [String!]!
+}
+
+type SyncSaleItemsResultGQL {
+  storeId: String!
+  saleId: String!
+  synced: Int!
+  deleted: Int!
+  errors: [String!]!
+}
+
+type ConnectedStoreForSync {
+  tenantId: String!
+  storeId: String!
+}
+
+type EnqueueResult {
+  enqueued: Boolean!
+  jobId: String!
+}
+
+extend type Query {
+  syncConnectedStores: [ConnectedStoreForSync!]!
+}
+
 extend type Mutation {
   reconcileStore(storeId: String!, tenantId: String!, trigger: String): ReconcileStoreResult!
   reconcileAll(trigger: String! = "scheduled"): ReconcileAllResult!
   disconnectStoreData(storeId: String!, tenantId: String!): DisconnectStoreDataResult!
+  deleteStoreSaleItemsPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreSalesPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreCategoriesPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  deleteStoreVendedoresPhase(tenantId: String!, storeId: String!): DeletePhaseResult!
+  cleanupStoreDisconnectMetadata(
+    tenantId: String!
+    storeId: String!
+    jobId: String!
+  ): CleanupStoreDisconnectMetadataResult!
+  finalizeStoreDisconnect(tenantId: String!, storeId: String!, connectionId: String): FinalizeStoreDisconnectResult!
+  syncCategories(tenantId: String!, storeId: String!, trigger: String): SyncResultGQL!
+  syncSales(tenantId: String!, storeId: String!, trigger: String): SyncSalesResultGQL!
+  syncSaleItems(
+    tenantId: String!
+    storeId: String!
+    saleId: String!
+    trigger: String
+  ): SyncSaleItemsResultGQL!
+  enqueueReconcileStore(
+    tenantId: String!
+    storeId: String!
+    trigger: String
+    mode: SyncMode
+  ): EnqueueResult!
 }

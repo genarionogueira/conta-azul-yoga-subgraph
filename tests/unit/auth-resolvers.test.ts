@@ -131,6 +131,7 @@ describe('auth resolvers', () => {
     expect(result).toEqual({
       success: true,
       storeId: 'store-1',
+      jobId: null,
       error: null,
     })
     expect(mockCompleteConnect).toHaveBeenCalledWith(

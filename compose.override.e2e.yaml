@@ -51,9 +51,14 @@ services:
       WORKER_EVENTS_STREAM_MAXLEN: '1000'
       WORKER_EVENTS_STREAM_MINID_DAYS: '30'
       CATEGORIES_COLLECTION: conta_azul_categories
+      SALES_SYNC_DAYS: '90'
       TENANT_DISCOVERY_MODE: scan
       CONTA_AZUL_CLIENT_ID: e2e-client-id
       CONTA_AZUL_CLIENT_SECRET: e2e-client-secret
+      CONTA_AZUL_RPS: '9'
+      CONTA_AZUL_RPM: '550'
+      BACKFILL_MONTHS: '1'
+      JOB_STREAM_KEY: conta_azul:jobs
     healthcheck:
       interval: 5s
       timeout: 3s
@@ -72,12 +77,25 @@ services:
       - '0:8010'
     environment:
       ENABLE_DEV_RECONCILE_TRIGGER: 'true'
-      SCHEDULER_ENABLED: 'true'
+      # Disabled for deterministic E2E: every test drives reconciliation
+      # explicitly (enqueue mutations / reconcile-once). A periodic all-store
+      # scheduler continuously reconciles store-1/store-2, competing for the
+      # Conta Azul rate budget + per-store concurrency gate and causing
+      # nondeterministic category-count drift and backfill starvation.
+      SCHEDULER_ENABLED: 'false'
       RECONCILE_INTERVAL_SECONDS: '5'
       YOGA_GRAPHQL_URL: http://yoga-subgraph:4000
       CONTA_AZUL_SERVICE_JWT: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhdmNkIiwiYXVkIjoiY29udGEtYXp1bC1zZXJ2aWNlIiwic3ViIjoiYXZjZC13b3JrZXIiLCJpYXQiOjE3ODIyNjQzMzEsImV4cCI6MjA5NzYyNDMzMX0.4k0Nk6BipZskdweXXgurKHpObsGg4ow45MkdnXMvCGo
       REDIS_URL: redis://redis:6379
       DEFAULT_DEV_TENANT_ID: dev-tenant
+      EXECUTOR_ENABLED: 'true'
+      JOB_STREAM_KEY: conta_azul:jobs
+      JOB_MAX_CONCURRENCY: '5'
+      BACKFILL_MONTHS: '1'
+      SALE_ITEMS_MAX_CONCURRENCY_PER_STORE: '9'
+      PROGRESS_REPORT_EVERY_N: '5'
+      PROGRESS_REPORT_MIN_INTERVAL_MS: '2000'
+      CONTA_AZUL_RPS: '9'
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8010/health']
       interval: 5s

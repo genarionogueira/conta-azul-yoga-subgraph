@@ -6,13 +6,63 @@ import type { TenantTokenStore } from '../../src/lib/credentials/tenant-token-st
 import type { ConnectionRepository } from '../../src/lib/connections/connection-repository.js'
 import { TEST_TENANT_ID } from '../helpers/test-context.js'
 
+function mockOAuthAndAccountFetch() {
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    const href = typeof input === 'string' ? input : input.toString()
+    if (href.includes('conta-conectada')) {
+      return new Response(
+        JSON.stringify({ documento: '12.345.678/0001-90', nome: 'Empresa Teste' }),
+        { status: 200 }
+      )
+    }
+    return new Response(
+      JSON.stringify({
+        access_token: 'access',
+        refresh_token: 'refresh',
+        expires_in: 3600,
+      }),
+      { status: 200 }
+    )
+  })
+}
+
+function createConnectionDoc(overrides: Record<string, unknown> = {}) {
+  return {
+    tenantId: TEST_TENANT_ID,
+    connectionId: 'conn-1',
+    storeId: 'store-1',
+    contaAzulAccountId: '12345678000190',
+    name: 'store-1',
+    status: 'ACTIVE' as const,
+    connectedAt: new Date('2026-06-27T19:00:00.000Z'),
+    disconnectedAt: null,
+    updatedAt: new Date('2026-06-27T19:00:00.000Z'),
+    ...overrides,
+  }
+}
+
+const mockEnqueueStoreReconcileJob = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ jobId: 'job-test', streamId: '1-0' })
+)
+const mockEnqueueStoreDisconnectJob = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ jobId: 'disconnect-job', streamId: '2-0' })
+)
+
+vi.mock('../../src/lib/redis/create-redis-client.js', () => ({
+  createRedisClient: () => ({ quit: vi.fn().mockResolvedValue('OK') }),
+}))
+
+vi.mock('../../src/lib/sync/store-sync-job-service.js', () => ({
+  enqueueStoreReconcileJob: (...args: unknown[]) => mockEnqueueStoreReconcileJob(...args),
+  enqueueStoreDisconnectJob: (...args: unknown[]) => mockEnqueueStoreDisconnectJob(...args),
+}))
+
 describe('ConnectionService', () => {
   const env = process.env
   let authConfig: AuthConfig
   let oauthStateStore: OAuthStateStore
   let tokenStore: TenantTokenStore
   let connectionRepository: ConnectionRepository
-  let storeDataCleaner: { cleanup: ReturnType<typeof vi.fn> }
   let service: ConnectionService
 
   beforeEach(() => {
@@ -28,6 +78,8 @@ describe('ConnectionService', () => {
     oauthStateStore = {
       createState: vi.fn(),
       consumeState: vi.fn(),
+      markCompleted: vi.fn().mockResolvedValue(undefined),
+      peekCompleted: vi.fn().mockResolvedValue(null),
     } as unknown as OAuthStateStore
     tokenStore = {
       saveConnection: vi.fn(),
@@ -39,19 +91,33 @@ describe('ConnectionService', () => {
     } as unknown as TenantTokenStore
     connectionRepository = {
       upsert: vi.fn(),
+      upsertActiveName: vi.fn(),
       delete: vi.fn(),
+      create: vi.fn().mockImplementation(async (_tenantId, storeId, _cnpj, name) =>
+        createConnectionDoc({ storeId, name: name ?? storeId })
+      ),
+      findByContaAzulAccountId: vi.fn().mockResolvedValue(null),
+      findActiveByStoreId: vi.fn().mockResolvedValue(createConnectionDoc()),
+      findByConnectionId: vi.fn(),
+      hasSyncedData: vi.fn().mockResolvedValue(false),
       listByTenant: vi.fn().mockResolvedValue([]),
       findOne: vi.fn(),
+      reactivate: vi.fn(),
+      softDisconnect: vi.fn(),
+      migrateStoreId: vi.fn(),
     } as unknown as ConnectionRepository
-    storeDataCleaner = { cleanup: vi.fn().mockResolvedValue(undefined) }
     service = new ConnectionService({
       authConfig,
       oauthStateStore,
       tokenStore,
       connectionRepository,
-      storeDataCleaner,
     })
     vi.stubGlobal('fetch', vi.fn())
+    mockEnqueueStoreReconcileJob.mockResolvedValue({ jobId: 'job-test', streamId: '1-0' })
+    mockEnqueueStoreDisconnectJob.mockResolvedValue({
+      jobId: 'disconnect-job',
+      streamId: '2-0',
+    })
   })
 
   afterEach(() => {
@@ -79,7 +145,6 @@ describe('ConnectionService', () => {
       oauthStateStore,
       tokenStore,
       connectionRepository,
-      storeDataCleaner,
     })
 
     await expect(service.startConnect(TEST_TENANT_ID, 'store-1')).rejects.toThrow(
@@ -93,16 +158,7 @@ describe('ConnectionService', () => {
       storeId: 'store-1',
     })
     vi.mocked(tokenStore.saveConnection).mockResolvedValue(undefined)
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: 'access',
-          refresh_token: 'refresh',
-          expires_in: 3600,
-        }),
-        { status: 200 }
-      )
-    )
+    mockOAuthAndAccountFetch()
 
     const result = await service.completeConnect(
       TEST_TENANT_ID,
@@ -111,17 +167,14 @@ describe('ConnectionService', () => {
       'valid-state'
     )
 
-    expect(result).toEqual({ success: true, storeId: 'store-1' })
+    expect(result).toEqual({ success: true, storeId: 'store-1', jobId: 'job-test' })
     expect(tokenStore.saveConnection).toHaveBeenCalledWith(
       TEST_TENANT_ID,
+      'conn-1',
       'store-1',
       expect.objectContaining({ access_token: 'access' })
     )
-    expect(connectionRepository.upsert).toHaveBeenCalledWith(
-      TEST_TENANT_ID,
-      'store-1',
-      'store-1'
-    )
+    expect(connectionRepository.create).toHaveBeenCalled()
   })
 
   it('GivenCustomName_WhenCompleteConnect_ThenUpsertsMongoWithName', async () => {
@@ -130,16 +183,7 @@ describe('ConnectionService', () => {
       storeId: 'store-1',
     })
     vi.mocked(tokenStore.saveConnection).mockResolvedValue(undefined)
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: 'access',
-          refresh_token: 'refresh',
-          expires_in: 3600,
-        }),
-        { status: 200 }
-      )
-    )
+    mockOAuthAndAccountFetch()
 
     await service.completeConnect(
       TEST_TENANT_ID,
@@ -150,9 +194,10 @@ describe('ConnectionService', () => {
       'Butantã'
     )
 
-    expect(connectionRepository.upsert).toHaveBeenCalledWith(
+    expect(connectionRepository.create).toHaveBeenCalledWith(
       TEST_TENANT_ID,
       'store-1',
+      '12345678000190',
       'Butantã'
     )
   })
@@ -181,23 +226,48 @@ describe('ConnectionService', () => {
       storeId: 'store-cb',
     })
     vi.mocked(tokenStore.saveConnection).mockResolvedValue(undefined)
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: 'access',
-          refresh_token: 'refresh',
-          expires_in: 3600,
-        }),
-        { status: 200 }
-      )
-    )
+    mockOAuthAndAccountFetch()
 
     const result = await service.completeConnectFromCallback('auth-code', 'state-x')
 
-    expect(result).toEqual({ success: true, storeId: 'store-cb' })
+    expect(result).toEqual({ success: true, storeId: 'store-cb', jobId: 'job-test' })
+    expect(oauthStateStore.markCompleted).toHaveBeenCalledWith(
+      'state-x',
+      expect.objectContaining({ storeId: 'store-cb', jobId: 'job-test' })
+    )
   })
 
-  it('GivenExistingToken_WhenDisconnect_ThenSuccessTrue', async () => {
+  it('GivenAlreadyCompletedState_WhenCompleteConnectFromCallback_ThenReplaysSuccess', async () => {
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue(null)
+    vi.mocked(oauthStateStore.peekCompleted).mockResolvedValue({
+      storeId: 'store-cb',
+      jobId: 'job-prev',
+      returnUrl: 'https://dev.avocado.tech/',
+    })
+
+    const result = await service.completeConnectFromCallback('reused-code', 'state-x')
+
+    expect(result).toEqual({
+      success: true,
+      storeId: 'store-cb',
+      jobId: 'job-prev',
+      returnUrl: 'https://dev.avocado.tech/',
+    })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(tokenStore.saveConnection).not.toHaveBeenCalled()
+  })
+
+  it('GivenUnknownState_WhenCompleteConnectFromCallback_ThenReturnsError', async () => {
+    vi.mocked(oauthStateStore.consumeState).mockResolvedValue(null)
+    vi.mocked(oauthStateStore.peekCompleted).mockResolvedValue(null)
+
+    const result = await service.completeConnectFromCallback('code', 'state-x')
+
+    expect(result.success).toBe(false)
+    expect(result).toMatchObject({ error: 'Invalid or expired OAuth state' })
+  })
+
+  it('GivenExistingToken_WhenDisconnect_ThenReturnsJobId', async () => {
     vi.mocked(tokenStore.getToken).mockResolvedValue({
       access_token: 'access',
       refresh_token: 'refresh',
@@ -210,47 +280,30 @@ describe('ConnectionService', () => {
     expect(result).toEqual({
       success: true,
       storeId: 'store-1',
+      jobId: 'disconnect-job',
       error: null,
     })
-    expect(storeDataCleaner.cleanup).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
-    expect(tokenStore.deleteConnection).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
-    expect(connectionRepository.delete).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
+    expect(mockEnqueueStoreDisconnectJob).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: TEST_TENANT_ID,
+      storeId: 'store-1',
+      connectionId: 'conn-1',
+    })
+    expect(tokenStore.deleteConnection).not.toHaveBeenCalled()
+    expect(connectionRepository.delete).not.toHaveBeenCalled()
   })
 
-  it('GivenConnectedStore_WhenDisconnect_ThenCleanupThenDeleteConnection', async () => {
-    const callOrder: string[] = []
+  it('GivenConnectedStore_WhenDisconnect_ThenEnqueuesWithoutDeletingToken', async () => {
     vi.mocked(tokenStore.getToken).mockResolvedValue({
       access_token: 'access',
       refresh_token: 'refresh',
       expires_at: Date.now() + 3600_000,
       connected_at: Date.now(),
-    })
-    vi.mocked(storeDataCleaner.cleanup).mockImplementation(async () => {
-      callOrder.push('cleanup')
-    })
-    vi.mocked(tokenStore.deleteConnection).mockImplementation(async () => {
-      callOrder.push('deleteConnection')
     })
 
     await service.disconnect(TEST_TENANT_ID, 'store-1')
 
-    expect(callOrder).toEqual(['cleanup', 'deleteConnection'])
-  })
-
-  it('GivenCleanupFails_WhenDisconnect_ThenStillDeletesRedisConnection', async () => {
-    vi.mocked(tokenStore.getToken).mockResolvedValue({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expires_at: Date.now() + 3600_000,
-      connected_at: Date.now(),
-    })
-    vi.mocked(storeDataCleaner.cleanup).mockRejectedValue(new Error('Worker disconnect-store failed: 500'))
-
-    const result = await service.disconnect(TEST_TENANT_ID, 'store-1')
-
-    expect(result.success).toBe(true)
-    expect(result.error).toContain('500')
-    expect(tokenStore.deleteConnection).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1')
+    expect(mockEnqueueStoreDisconnectJob).toHaveBeenCalled()
+    expect(tokenStore.deleteConnection).not.toHaveBeenCalled()
   })
 
   it('GivenNoToken_WhenDisconnect_ThenSuccessFalse', async () => {
@@ -260,20 +313,19 @@ describe('ConnectionService', () => {
 
     expect(result.success).toBe(false)
     expect(result.error).toContain('not connected')
-    expect(storeDataCleaner.cleanup).not.toHaveBeenCalled()
+    expect(mockEnqueueStoreDisconnectJob).not.toHaveBeenCalled()
     expect(tokenStore.deleteConnection).not.toHaveBeenCalled()
   })
 
-  it('GivenNotConnected_WhenDisconnect_ThenCleanupNotCalled', async () => {
+  it('GivenNotConnected_WhenDisconnect_ThenEnqueueNotCalled', async () => {
     vi.mocked(tokenStore.getToken).mockResolvedValue(null)
 
     await service.disconnect(TEST_TENANT_ID, 'store-1')
 
-    expect(storeDataCleaner.cleanup).not.toHaveBeenCalled()
+    expect(mockEnqueueStoreDisconnectJob).not.toHaveBeenCalled()
   })
 
   it('GivenMongoWithToken_WhenListConnections_ThenReturnsNamedRows', async () => {
-    vi.mocked(tokenStore.listConnectedStoreIds).mockResolvedValue(['store-1'])
     vi.mocked(tokenStore.getToken).mockResolvedValue({
       access_token: 'access',
       refresh_token: 'refresh',
@@ -281,46 +333,46 @@ describe('ConnectionService', () => {
       connected_at: Date.parse('2026-06-27T19:00:00.000Z'),
     })
     vi.mocked(connectionRepository.listByTenant).mockResolvedValue([
-      {
-        tenantId: TEST_TENANT_ID,
-        id: 'store-1',
-        name: 'Butantã',
-        connectedAt: new Date('2026-06-27T19:00:00.000Z'),
-        updatedAt: new Date('2026-06-27T19:00:00.000Z'),
-      },
+      createConnectionDoc({ storeId: 'store-1', name: 'Butantã' }),
     ])
 
     const rows = await service.listConnections(TEST_TENANT_ID)
 
     expect(rows).toEqual([
       {
+        connectionId: 'conn-1',
+        storeId: 'store-1',
         id: 'store-1',
         name: 'Butantã',
+        status: 'ACTIVE',
         connectedAt: '2026-06-27T19:00:00.000Z',
+        disconnectedAt: null,
         isConnected: true,
       },
     ])
   })
 
-  it('GivenMongoWithoutToken_WhenListConnections_ThenPrunesOrphanDoc', async () => {
-    vi.mocked(tokenStore.listConnectedStoreIds).mockResolvedValue([])
+  it('GivenMongoWithoutToken_WhenListConnections_ThenReturnsDisconnectedRow', async () => {
+    vi.mocked(tokenStore.getToken).mockResolvedValue(null)
     vi.mocked(connectionRepository.listByTenant).mockResolvedValue([
-      {
-        tenantId: TEST_TENANT_ID,
-        id: 'orphan-store',
+      createConnectionDoc({
+        storeId: 'orphan-store',
         name: 'Orphan',
-        connectedAt: new Date(),
-        updatedAt: new Date(),
-      },
+        status: 'DISCONNECTED',
+        disconnectedAt: new Date('2026-06-28T10:00:00.000Z'),
+      }),
     ])
 
     const rows = await service.listConnections(TEST_TENANT_ID)
 
-    expect(rows).toEqual([])
-    expect(connectionRepository.delete).toHaveBeenCalledWith(
-      TEST_TENANT_ID,
-      'orphan-store'
-    )
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'orphan-store',
+        status: 'DISCONNECTED',
+        isConnected: false,
+      }),
+    ])
+    expect(connectionRepository.delete).not.toHaveBeenCalled()
   })
 
   it('GivenConnectedStore_WhenUpdateConnection_ThenUpsertsName', async () => {
@@ -339,7 +391,7 @@ describe('ConnectionService', () => {
       name: 'Renamed Store',
       error: null,
     })
-    expect(connectionRepository.upsert).toHaveBeenCalledWith(
+    expect(connectionRepository.upsertActiveName).toHaveBeenCalledWith(
       TEST_TENANT_ID,
       'store-1',
       'Renamed Store'
@@ -362,7 +414,7 @@ describe('ConnectionService', () => {
       name: 'store-1',
       error: null,
     })
-    expect(connectionRepository.upsert).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1', '')
+    expect(connectionRepository.upsertActiveName).toHaveBeenCalledWith(TEST_TENANT_ID, 'store-1', '')
   })
 
   it('GivenWhitespaceOnlyName_WhenUpdateConnection_ThenUpsertsIdAsName', async () => {
@@ -391,7 +443,7 @@ describe('ConnectionService', () => {
     expect(result.success).toBe(false)
     expect(result.name).toBeNull()
     expect(result.error).toContain('not connected')
-    expect(connectionRepository.upsert).not.toHaveBeenCalled()
+    expect(connectionRepository.upsertActiveName).not.toHaveBeenCalled()
   })
 
   it('GivenInvalidStoreId_WhenUpdateConnection_ThenThrows', async () => {
@@ -400,28 +452,23 @@ describe('ConnectionService', () => {
     ).rejects.toThrow('Invalid storeId')
   })
 
-  it('GivenTokenWithoutMongo_WhenListConnections_ThenLazyUpsertsAndReturnsIdAsName', async () => {
-    vi.mocked(tokenStore.listConnectedStoreIds).mockResolvedValue(['legacy-store'])
-    vi.mocked(tokenStore.getToken).mockResolvedValue({
-      access_token: 'access',
-      refresh_token: 'refresh',
-      expires_at: Date.now() + 3600_000,
-      connected_at: Date.parse('2026-06-27T19:00:00.000Z'),
-    })
-    vi.mocked(connectionRepository.listByTenant).mockResolvedValue([])
+  it('GivenDisconnectedMongoRow_WhenListConnections_ThenReturnsWithoutToken', async () => {
+    vi.mocked(tokenStore.getToken).mockResolvedValue(null)
+    vi.mocked(connectionRepository.listByTenant).mockResolvedValue([
+      createConnectionDoc({
+        storeId: 'legacy-store',
+        status: 'DISCONNECTED',
+        disconnectedAt: new Date('2026-06-28T10:00:00.000Z'),
+      }),
+    ])
 
     const rows = await service.listConnections(TEST_TENANT_ID)
 
-    expect(connectionRepository.upsert).toHaveBeenCalledWith(
-      TEST_TENANT_ID,
-      'legacy-store',
-      'legacy-store'
-    )
     expect(rows[0]).toEqual(
       expect.objectContaining({
         id: 'legacy-store',
-        name: 'legacy-store',
-        isConnected: true,
+        isConnected: false,
+        status: 'DISCONNECTED',
       })
     )
   })

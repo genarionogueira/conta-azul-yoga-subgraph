@@ -4,6 +4,57 @@
  */
 
 export interface paths {
+    "/v1/venda/busca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search sales within a date range */
+        get: operations["listVendas"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/venda/{id_venda}/itens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List line items for a sale */
+        get: operations["listVendaItens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/venda/vendedores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List salespeople */
+        get: operations["listVendedores"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/categorias": {
         parameters: {
             query?: never;
@@ -25,6 +76,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        VendaSituacao: {
+            nome?: string;
+            descricao?: string;
+        };
+        VendaCliente: {
+            id?: string;
+            nome?: string;
+        };
+        VendaItem: {
+            id: string;
+            numero?: number;
+            data?: string;
+            data_alteracao?: string;
+            tipo?: string;
+            situacao?: components["schemas"]["VendaSituacao"];
+            cliente?: components["schemas"]["VendaCliente"];
+            origem?: string;
+        };
+        VendasPaginated: {
+            itens?: components["schemas"]["VendaItem"][];
+            totais?: {
+                [key: string]: unknown;
+            };
+        };
+        VendaLinhaItem: {
+            id: string;
+            id_item?: string;
+            nome?: string;
+            descricao?: string;
+            tipo?: string;
+            quantidade?: number;
+            valor?: number;
+            custo?: number;
+        };
+        VendaItensPaginated: {
+            itens?: components["schemas"]["VendaLinhaItem"][];
+            itens_totais?: number;
+            totais?: {
+                [key: string]: unknown;
+            };
+        };
+        VendedorItem: {
+            id: string;
+            nome?: string;
+            email?: string;
+            ativo?: boolean;
+        };
+        VendedoresPaginated: {
+            itens?: components["schemas"]["VendedorItem"][];
+            itens_totais?: number;
+        };
         Categoria: {
             id: string;
             nome: string;
@@ -43,6 +145,79 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listVendas: {
+        parameters: {
+            query: {
+                data_inicio: string;
+                data_fim: string;
+                pagina?: number;
+                tamanho_pagina?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated sales search result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendasPaginated"];
+                };
+            };
+        };
+    };
+    listVendaItens: {
+        parameters: {
+            query?: {
+                pagina?: number;
+                tamanho_pagina?: 10 | 20 | 50 | 100 | 200 | 500 | 1000;
+            };
+            header?: never;
+            path: {
+                id_venda: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated sale line items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendaItensPaginated"];
+                };
+            };
+        };
+    };
+    listVendedores: {
+        parameters: {
+            query?: {
+                pagina?: number;
+                tamanho_pagina?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated salespeople */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VendedoresPaginated"];
+                };
+            };
+        };
+    };
     listCategorias: {
         parameters: {
             query?: {
